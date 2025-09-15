@@ -70,6 +70,12 @@ export function registerOrdersRoutes(
     const { priceScale, qtyScale } = getScales(ctx, body.symbol);
     try {
       const qty = toQtyInt(body.qty, qtyScale);
+      // Для LIMIT цена обязательна — отвечаем 400 до вызова сервиса
+      if (body.type === 'LIMIT' && body.price === undefined) {
+        return reply
+          .status(400)
+          .send({ message: 'price is required for LIMIT' });
+      }
       const price =
         body.price !== undefined
           ? toPriceInt(body.price, priceScale)

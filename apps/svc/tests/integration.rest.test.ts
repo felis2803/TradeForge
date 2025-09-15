@@ -138,6 +138,18 @@ describe('REST adapter integration', () => {
     });
   });
 
+  it('rejects deposits for unknown currencies', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/accounts/${accountId}/deposit`,
+      payload: JSON.stringify({ currency: 'FOO', amount: '1' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body) as { message: string };
+    expect(body.message).toContain('unknown currency');
+  });
+
   it('rejects orders that exceed available balance', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -182,6 +194,24 @@ describe('REST adapter integration', () => {
     };
     expect(body.status).toBe('REJECTED');
     expect(body.rejectReason).toBe('UNKNOWN_SYMBOL');
+  });
+
+  it('requires price for limit orders', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      payload: JSON.stringify({
+        accountId,
+        symbol: 'BTCUSDT',
+        type: 'LIMIT',
+        side: 'BUY',
+        qty: '0.01',
+      }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body) as { message: string };
+    expect(body.message).toContain('price is required for LIMIT');
   });
 
   it('returns validation errors for invalid decimals', async () => {
