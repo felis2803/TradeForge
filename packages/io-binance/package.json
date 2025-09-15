@@ -14,5 +14,11 @@
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   }
 }
