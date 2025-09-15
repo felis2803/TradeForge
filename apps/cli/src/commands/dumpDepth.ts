@@ -3,6 +3,15 @@ import { createReader } from '@tradeforge/io-binance';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 
+function stringify(obj: unknown, space?: number) {
+  return JSON.stringify(
+    obj,
+    // bigint -> string for console output
+    (_, v) => (typeof v === 'bigint' ? v.toString() : v),
+    space,
+  );
+}
+
 function parseArgs(argv: string[]): Record<string, string> {
   const res: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
@@ -31,7 +40,9 @@ export async function dumpDepth(argv: string[]): Promise<void> {
       return existsSync(up2) ? up2 : direct;
     });
   if (files.length === 0) {
-    console.error('no files specified');
+    console.error(
+      'no files specified. Example: tf dump depth --files packages/io-binance/tests/fixtures/depth.jsonl --limit 2 --ndjson',
+    );
     return;
   }
   const symbol = (args['symbol'] ?? 'BTCUSDT') as string;
@@ -40,6 +51,8 @@ export async function dumpDepth(argv: string[]): Promise<void> {
   const fromMs = args['from'] ? Date.parse(String(args['from'])) : undefined;
   const toMs = args['to'] ? Date.parse(String(args['to'])) : undefined;
   const ndjson = args['ndjson'] === 'true';
+  const assertMono = args['assert-mono-ts'] === 'true';
+  const shape = (args['shape'] as string) ?? undefined; // e.g. 'binance-spot-diff'
   const tf: { fromMs?: number; toMs?: number } = {};
   if (fromMs !== undefined) tf.fromMs = fromMs;
   if (toMs !== undefined) tf.toMs = toMs;
@@ -51,13 +64,13 @@ export async function dumpDepth(argv: string[]): Promise<void> {
     limit,
   };
   if (Object.keys(tf).length) readerOpts['timeFilter'] = tf;
+  if (assertMono) readerOpts['assertMonotonicTimestamps'] = true;
+  if (shape) {
+    // совместимо с PR-спеком: depthShape в io-binance
+    (readerOpts as any)['depthShape'] = shape;
+  }
+
   const reader = createReader(readerOpts as any);
-  const stringify = (obj: unknown, space?: number) =>
-    JSON.stringify(
-      obj,
-      (_, v) => (typeof v === 'bigint' ? v.toString() : v),
-      space,
-    );
   for await (const d of reader as AsyncIterable<unknown>) {
     if (ndjson) {
       console.log(stringify(d));
