@@ -6,21 +6,31 @@ function toFixedInt(
   scale: number,
   name: string,
 ): bigint {
-  const str = typeof value === 'number' ? value.toString() : value;
-  if (str.startsWith('-')) {
+  // Нормализация ввода
+  let raw = typeof value === 'number' ? String(value) : String(value);
+  raw = raw.trim();
+  // Явно запрещаем научную нотацию — просим строку с десятичной точкой для детерминизма
+  if (/[eE]/.test(raw)) {
+    throw new Error(
+      `${name}: scientific notation is not supported; pass a decimal string`,
+    );
+  }
+  if (raw.startsWith('-')) {
     throw new Error(`${name} cannot be negative`);
   }
-  const [intPart, fracPart = ''] = str.split('.');
-  const frac = fracPart.padEnd(scale, '0').slice(0, scale);
-  return BigInt(intPart + frac);
+  // Разрешаем только цифры и одну точку
+  if (!/^\d+(\.\d+)?$/.test(raw)) {
+    throw new Error(`${name}: invalid decimal string`);
+  }
+  const [intPart = '0', fracPart = ''] = raw.split('.');
+  const frac = fracPart.padEnd(scale, '0').slice(0, scale); // усечение без округления
+  // Учтём scale=0 (тогда frac будет пустым)
+  const joined = scale === 0 ? intPart : intPart + frac;
+  return BigInt(joined);
 }
 
 function fromFixedInt(value: bigint, scale: number): string {
   assertNonNegative(value);
-  const negative = value < 0n;
-  if (negative) {
-    throw new Error('value cannot be negative');
-  }
   if (scale === 0) {
     return value.toString();
   }
@@ -90,3 +100,5 @@ export function mulDivPrice(a: PriceInt, b: bigint, denom: bigint): PriceInt {
 
 export const serializePrice = fromPriceInt;
 export const serializeQty = fromQtyInt;
+
+// Примечание: все операции детерминированы, округления вверх не используется.

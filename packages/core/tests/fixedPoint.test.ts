@@ -3,6 +3,7 @@ import {
   fromPriceInt,
   toQtyInt,
   fromQtyInt,
+  PriceInt,
   cmpPrice,
   cmpQty,
   addPrice,
@@ -11,7 +12,6 @@ import {
   subQty,
   mulDivQty,
   mulDivPrice,
-  PriceInt,
   QtyInt,
 } from '../src/index';
 
@@ -59,4 +59,20 @@ test('mulDiv helpers', () => {
   expect(mulDivQty(1000n as QtyInt, 3n, 2n)).toBe(1500n);
   expect(mulDivQty(1n as QtyInt, 1n, 2n)).toBe(0n);
   expect(mulDivPrice(1000n as PriceInt, 3n, 2n)).toBe(1500n);
+});
+
+test('reject scientific notation', () => {
+  expect(() => toPriceInt('1e-6', 8)).toThrow();
+  // number -> toString() может дать scientific; явно просим строку
+  expect(() => toPriceInt(1e-7, 8)).toThrow();
+});
+
+test('reject invalid chars', () => {
+  expect(() => toPriceInt('12.3.4', 5)).toThrow();
+  expect(() => toQtyInt('abc', 6)).toThrow();
+});
+
+test('reject negatives at input', () => {
+  expect(() => toPriceInt('-1.0', 5)).toThrow();
+  expect(() => toQtyInt('-0.001', 6)).toThrow();
 });
