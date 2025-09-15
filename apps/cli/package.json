@@ -1,0 +1,14 @@
+{
+  "name": "@tradeforge/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "tf": "./bin/tf.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "lint": "eslint . --ext .ts",
+    "test": "jest"
+  }
+}
