@@ -1,0 +1,17 @@
+{
+  "name": "@tradeforge/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "tf": "./bin/tf.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "dev": "tsx src/index.ts",
+    "format": "prettier -w .",
+    "lint": "eslint . --ext .ts",
+    "test": "jest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
