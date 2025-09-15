@@ -1,0 +1,21 @@
+{
+  "name": "@tradeforge/svc",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "tf-svc": "./bin/svc.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
+    "dev": "tsx src/server.ts",
+    "format": "prettier -w .",
+    "lint": "eslint . --ext .ts",
+    "test": "jest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tradeforge/core": "workspace:^",
+    "fastify": "^4.26.2"
+  }
+}
