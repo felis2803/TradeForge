@@ -255,3 +255,52 @@ describe('REST adapter integration', () => {
     expect(body.rejectReason).toBe('UNSUPPORTED_EXECUTION');
   });
 });
+
+describe('REST adapter validation regressions', () => {
+  let app: FastifyInstance;
+  let accountId: string;
+
+  beforeAll(async () => {
+    app = createServer();
+    await app.ready();
+
+    const res = await app.inject({ method: 'POST', url: '/v1/accounts' });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body) as { accountId: string };
+    accountId = body.accountId;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  test('deposit: unknown currency -> 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/accounts/${accountId}/deposit`,
+      payload: JSON.stringify({ currency: 'XXX', amount: '100' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body) as { message: string };
+    expect(body.message).toMatch(/unknown currency/i);
+  });
+
+  test('place LIMIT without price -> 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      payload: JSON.stringify({
+        accountId,
+        symbol: 'BTCUSDT',
+        type: 'LIMIT',
+        side: 'BUY',
+        qty: '0.001',
+      }),
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body) as { message: string };
+    expect(body.message).toMatch(/price is required for LIMIT/i);
+  });
+});
