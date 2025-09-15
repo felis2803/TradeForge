@@ -5,6 +5,9 @@ import type {
   Trade,
   DepthDiff,
   SymbolScaleMap,
+  SourceTag,
+  TradeEvent,
+  DepthEvent,
 } from '@tradeforge/core';
 import { readFileLines } from './fs/readers.js';
 import { parseCsv, CsvOptions } from './parse/csv.js';
@@ -12,6 +15,10 @@ import { parseJsonl } from './parse/jsonl.js';
 import { parseJson, JsonOptions } from './parse/json.js';
 import { normalizeTrade } from './normalize/trades.js';
 import { normalizeDepth } from './normalize/depth.js';
+import {
+  createTradeEventDecorator,
+  createDepthEventDecorator,
+} from './normalize/common.js';
 
 export interface ReaderOpts {
   kind: 'trades' | 'depth';
@@ -25,6 +32,7 @@ export interface ReaderOpts {
   limit?: number;
   assertMonotonicTimestamps?: boolean;
   logger?: { debug?: (msg: string) => void; warn?: (msg: string) => void };
+  internalTag?: SourceTag;
 }
 
 function detectFormat(name: string): 'csv' | 'json' | 'jsonl' {
@@ -49,11 +57,13 @@ async function expand(files: string[]): Promise<string[]> {
 
 export async function* createReader(
   opts: ReaderOpts,
-): AsyncIterable<Trade | DepthDiff> {
+): AsyncIterable<TradeEvent | DepthEvent> {
   const symbol = (opts.symbol ?? ('BTCUSDT' as SymbolId)) as SymbolId;
   const files = await expand(opts.files);
   let count = 0;
   let prevTs: number | undefined;
+  const defaultTag: SourceTag = opts.kind === 'trades' ? 'TRADES' : 'DEPTH';
+  const sourceTag: SourceTag = opts.internalTag ?? defaultTag;
   for await (const entry of readFileLines(files)) {
     const fmt =
       opts.format === 'auto' || !opts.format
@@ -67,13 +77,18 @@ export async function* createReader(
     } else {
       rawIter = parseJson(entry.lines, opts.json);
     }
+    const decorator =
+      opts.kind === 'trades'
+        ? createTradeEventDecorator({ source: sourceTag, entry: entry.name })
+        : createDepthEventDecorator({ source: sourceTag, entry: entry.name });
+    const isTrades = opts.kind === 'trades';
     for await (const raw of rawIter) {
       const common: Record<string, unknown> = { symbol };
       if (opts.scaleOverride) {
         common['scaleOverride'] = opts.scaleOverride;
       }
       let item: Trade | DepthDiff;
-      if (opts.kind === 'trades') {
+      if (isTrades) {
         const nOpts: Record<string, unknown> = { ...common };
         const map = opts.csv?.mapping ?? opts.json?.mapping;
         if (map) nOpts['mapping'] = map;
@@ -103,7 +118,10 @@ export async function* createReader(
         );
       }
       prevTs = ts;
-      yield item;
+      const event = isTrades
+        ? (decorator as (payload: Trade) => TradeEvent)(item as Trade)
+        : (decorator as (payload: DepthDiff) => DepthEvent)(item as DepthDiff);
+      yield event;
       count++;
       if (opts.limit && count >= opts.limit) {
         return;
@@ -112,5 +130,11 @@ export async function* createReader(
   }
 }
 
-export type { Trade, DepthDiff } from '@tradeforge/core';
+export type {
+  Trade,
+  DepthDiff,
+  TradeEvent,
+  DepthEvent,
+  SourceTag,
+} from '@tradeforge/core';
 export type { CsvOptions } from './parse/csv.js';
