@@ -7,8 +7,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "clean": "rimraf dist",
     "dev": "tsx src/index.ts",
+    "format": "prettier -w .",
     "lint": "eslint . --ext .ts",
-    "test": "jest"
+    "test": "jest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

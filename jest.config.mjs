@@ -5,12 +5,15 @@ export default {
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1'
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
-    '^.+\\.ts$': ['ts-jest', { useESM: true, tsconfig: resolve('tsconfig.base.json') }]
+    '^.+\\.ts$': [
+      'ts-jest',
+      { useESM: true, tsconfig: resolve('tsconfig.base.json') },
+    ],
   },
   testMatch: ['**/tests/**/*.test.ts'],
   collectCoverage: true,
-  coverageProvider: 'v8'
+  coverageProvider: 'v8',
 };
