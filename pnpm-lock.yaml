@@ -56,11 +56,25 @@ importers:
         specifier: ^5.4.0
         version: 5.9.2
 
-  apps/cli: {}
+  apps/cli:
+    dependencies:
+      '@tradeforge/io-binance':
+        specifier: workspace:^
+        version: link:../../packages/io-binance
 
   packages/core: {}
 
-  packages/io-binance: {}
+  packages/io-binance:
+    dependencies:
+      '@tradeforge/core':
+        specifier: workspace:^
+        version: link:../core
+      fast-glob:
+        specifier: ^3.3.3
+        version: 3.3.3
+      unzipper:
+        specifier: ^0.12.3
+        version: 0.12.3
 
 packages:
   '@babel/code-frame@7.27.1':
@@ -1369,6 +1383,12 @@ packages:
       }
     hasBin: true
 
+  bluebird@3.7.2:
+    resolution:
+      {
+        integrity: sha512-XpNj6GDQzdfW+r2Wnn7xiSAd7TM3jzkxGXBGTtWKuSXv1xUV+azxAm8jdWZN06QTQk+2N2XB9jRDkvbmQmcRtg==,
+      }
+
   brace-expansion@1.1.12:
     resolution:
       {
@@ -1591,6 +1611,12 @@ packages:
         integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==,
       }
 
+  core-util-is@1.0.3:
+    resolution:
+      {
+        integrity: sha512-ZQBvi1DcpJ4GDqanjucZ2Hj3wEO5pZDS89BWbkcrvdxksJorwUDDZamX9ldFkp9aw2lmBDLgkObEA4DWNJ9FYQ==,
+      }
+
   create-jest@29.7.0:
     resolution:
       {
@@ -1662,6 +1688,12 @@ packages:
         integrity: sha512-WkrWp9GR4KXfKGYzOLmTuGVi1UWFfws377n9cc55/tb6DuqyF6pcQ5AbiHEshaDpY9v6oaSr2XCDidGmMwdzIA==,
       }
     engines: { node: '>=8' }
+
+  duplexer2@0.1.4:
+    resolution:
+      {
+        integrity: sha512-asLFVfWWtJ90ZyOUHMqk7/S2w2guQKxUI2itj3d92ADHhxUSbCMGi1f1cBcJ7xM1To+pE/Khbwo1yuNbMEPKeA==,
+      }
 
   eastasianwidth@0.2.0:
     resolution:
@@ -1988,6 +2020,13 @@ packages:
       }
     engines: { node: '>=14' }
 
+  fs-extra@11.3.1:
+    resolution:
+      {
+        integrity: sha512-eXvGGwZ5CL17ZSwHWd3bbgk7UUpF6IFHtP57NYYakPvHOs8GDgDe5KJI36jIJzDkJ6eJjuzRA8eBQb6SkKue0g==,
+      }
+    engines: { node: '>=14.14' }
+
   fs.realpath@1.0.0:
     resolution:
       {
@@ -2277,6 +2316,12 @@ packages:
         integrity: sha512-LnQR4bZ9IADDRSkvpqMGvt/tEJWclzklNgSw48V5EAaAeDd6qGvN8ei6k5p0tvxSR171VmGyHuTiAOfxAbr8kA==,
       }
     engines: { node: ^12.20.0 || ^14.13.1 || >=16.0.0 }
+
+  isarray@1.0.0:
+    resolution:
+      {
+        integrity: sha512-VLghIWNM6ELQzo7zwmcg0NmTVyWKYjvIeM83yjp0wRDTmUnrM678fQbcKBo6n2CJEF0szoG//ytg+TKla89ALQ==,
+      }
 
   isexe@2.0.0:
     resolution:
@@ -2605,6 +2650,12 @@ packages:
       }
     engines: { node: '>=6' }
     hasBin: true
+
+  jsonfile@6.2.0:
+    resolution:
+      {
+        integrity: sha512-FGuPw30AdOIUTRMC2OMRtQV+jkVj2cfPqSeWXv1NEAJ1qZ5zb1X6z1mFhbfOB/iy3ssJCD+3KuZ8r8C3uVFlAg==,
+      }
 
   keyv@4.5.4:
     resolution:
@@ -3122,6 +3173,12 @@ packages:
       }
     engines: { node: ^14.15.0 || ^16.10.0 || >=18.0.0 }
 
+  process-nextick-args@2.0.1:
+    resolution:
+      {
+        integrity: sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag==,
+      }
+
   prompts@2.4.2:
     resolution:
       {
@@ -3152,6 +3209,12 @@ packages:
     resolution:
       {
         integrity: sha512-/LLMVyas0ljjAtoYiPqYiL8VWXzUUdThrmU5+n20DZv+a+ClRoevUzw5JxU+Ieh5/c87ytoTBV9G1FiKfNJdmg==,
+      }
+
+  readable-stream@2.3.8:
+    resolution:
+      {
+        integrity: sha512-8p0AUk4XODgIewSi0l8Epjs+EVnWiK7NoDIEGU0HhE7+ZyY8D1IMY7odu5lRrFXGg71L15KG8QrPmum45RTtdA==,
       }
 
   readdirp@4.1.2:
@@ -3249,6 +3312,12 @@ packages:
     resolution:
       {
         integrity: sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==,
+      }
+
+  safe-buffer@5.1.2:
+    resolution:
+      {
+        integrity: sha512-Gd2UZBJDkXlY7GbJxfsE8/nvKkUEU1G38c1siN6QP6a9PT9MmHB8GnpscSmMJSoF8LOIrt8ud/wPtojys4G6+g==,
       }
 
   semver@6.3.1:
@@ -3388,6 +3457,12 @@ packages:
         integrity: sha512-tsaTIkKW9b4N+AEj+SVA+WhJzV7/zMhcSu78mLKWSk7cXMOSHsBKFWUs0fWwq8QyK3MgJBQRX6Gbi4kYbdvGkQ==,
       }
     engines: { node: '>=18' }
+
+  string_decoder@1.1.1:
+    resolution:
+      {
+        integrity: sha512-n/ShnvDi6FHbbVfviro+WojiFzv+s8MPMHBczVePfUpDJLwoLT0ht1l4YwBCbi8pJAveEEdnkHyPyTP/mzRfwg==,
+      }
 
   strip-ansi@6.0.1:
     resolution:
@@ -3657,6 +3732,19 @@ packages:
         integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==,
       }
 
+  universalify@2.0.1:
+    resolution:
+      {
+        integrity: sha512-gptHNQghINnc/vTGIk0SOFGFNXw7JVrlRUtConJRlvaw6DuX0wO5Jeko9sWrMBhh+PsYAZ7oXAiOnf/UKogyiw==,
+      }
+    engines: { node: '>= 10.0.0' }
+
+  unzipper@0.12.3:
+    resolution:
+      {
+        integrity: sha512-PZ8hTS+AqcGxsaQntl3IRBw65QrBI6lxzqDEL7IAo/XCEqRTKGfOX56Vea5TH9SZczRVxuzk1re04z/YjuYCJA==,
+      }
+
   update-browserslist-db@1.1.3:
     resolution:
       {
@@ -3670,6 +3758,12 @@ packages:
     resolution:
       {
         integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==,
+      }
+
+  util-deprecate@1.0.2:
+    resolution:
+      {
+        integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==,
       }
 
   v8-to-istanbul@9.3.0:
@@ -4651,6 +4745,8 @@ snapshots:
 
   baseline-browser-mapping@2.8.4: {}
 
+  bluebird@3.7.2: {}
+
   brace-expansion@1.1.12:
     dependencies:
       balanced-match: 1.0.2
@@ -4753,6 +4849,8 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
+  core-util-is@1.0.3: {}
+
   create-jest@29.7.0(@types/node@22.18.3):
     dependencies:
       '@jest/types': 29.6.3
@@ -4791,6 +4889,10 @@ snapshots:
   dir-glob@3.0.1:
     dependencies:
       path-type: 4.0.0
+
+  duplexer2@0.1.4:
+    dependencies:
+      readable-stream: 2.3.8
 
   eastasianwidth@0.2.0: {}
 
@@ -5027,6 +5129,12 @@ snapshots:
       cross-spawn: 7.0.6
       signal-exit: 4.1.0
 
+  fs-extra@11.3.1:
+    dependencies:
+      graceful-fs: 4.2.11
+      jsonfile: 6.2.0
+      universalify: 2.0.1
+
   fs.realpath@1.0.0: {}
 
   fsevents@2.3.3:
@@ -5162,6 +5270,8 @@ snapshots:
   is-stream@2.0.1: {}
 
   is-stream@3.0.0: {}
+
+  isarray@1.0.0: {}
 
   isexe@2.0.0: {}
 
@@ -5545,6 +5655,12 @@ snapshots:
 
   json5@2.2.3: {}
 
+  jsonfile@6.2.0:
+    dependencies:
+      universalify: 2.0.1
+    optionalDependencies:
+      graceful-fs: 4.2.11
+
   keyv@4.5.4:
     dependencies:
       json-buffer: 3.0.1
@@ -5808,6 +5924,8 @@ snapshots:
       ansi-styles: 5.2.0
       react-is: 18.3.1
 
+  process-nextick-args@2.0.1: {}
+
   prompts@2.4.2:
     dependencies:
       kleur: 3.0.3
@@ -5820,6 +5938,16 @@ snapshots:
   queue-microtask@1.2.3: {}
 
   react-is@18.3.1: {}
+
+  readable-stream@2.3.8:
+    dependencies:
+      core-util-is: 1.0.3
+      inherits: 2.0.4
+      isarray: 1.0.0
+      process-nextick-args: 2.0.1
+      safe-buffer: 5.1.2
+      string_decoder: 1.1.1
+      util-deprecate: 1.0.2
 
   readdirp@4.1.2: {}
 
@@ -5886,6 +6014,8 @@ snapshots:
   run-parallel@1.2.0:
     dependencies:
       queue-microtask: 1.2.3
+
+  safe-buffer@5.1.2: {}
 
   semver@6.3.1: {}
 
@@ -5956,6 +6086,10 @@ snapshots:
       emoji-regex: 10.5.0
       get-east-asian-width: 1.4.0
       strip-ansi: 7.1.2
+
+  string_decoder@1.1.1:
+    dependencies:
+      safe-buffer: 5.1.2
 
   strip-ansi@6.0.1:
     dependencies:
@@ -6110,6 +6244,16 @@ snapshots:
 
   undici-types@6.21.0: {}
 
+  universalify@2.0.1: {}
+
+  unzipper@0.12.3:
+    dependencies:
+      bluebird: 3.7.2
+      duplexer2: 0.1.4
+      fs-extra: 11.3.1
+      graceful-fs: 4.2.11
+      node-int64: 0.4.0
+
   update-browserslist-db@1.1.3(browserslist@4.26.0):
     dependencies:
       browserslist: 4.26.0
@@ -6119,6 +6263,8 @@ snapshots:
   uri-js@4.4.1:
     dependencies:
       punycode: 2.3.1
+
+  util-deprecate@1.0.2: {}
 
   v8-to-istanbul@9.3.0:
     dependencies:

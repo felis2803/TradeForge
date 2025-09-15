@@ -6,6 +6,7 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^@tradeforge/core$': '<rootDir>/packages/core/src/index.ts',
   },
   transform: {
     '^.+\\.ts$': [

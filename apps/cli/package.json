@@ -13,5 +13,8 @@
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tradeforge/io-binance": "workspace:^"
   }
 }
