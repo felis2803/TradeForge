@@ -19,7 +19,9 @@ test('csv reading', async () => {
   });
   const trades = await collect(reader);
   expect(trades).toHaveLength(3);
-  expect(fromPriceInt((trades[0] as any).price, 5)).toBe('10000.01');
+  expect(trades[0]?.kind).toBe('trade');
+  expect(trades[0]?.source).toBe('TRADES');
+  expect(fromPriceInt((trades[0] as any).payload.price, 5)).toBe('10000.01');
 });
 
 test('jsonl limit', async () => {
@@ -40,7 +42,8 @@ test('json array with time filter', async () => {
   });
   const trades = await collect(reader);
   expect(trades).toHaveLength(1);
-  expect((trades[0] as any).ts).toBe(1577836800100);
+  expect(Number((trades[0] as any).ts)).toBe(1577836800100);
+  expect((trades[0] as any).seq).toBe(0);
 });
 
 test('gz and zip', async () => {
@@ -62,6 +65,11 @@ test('gz and zip', async () => {
   });
   const trades = await collect(reader);
   expect(trades).toHaveLength(6);
+  const entries = trades.map((t) => (t as any).entry);
+  expect(new Set(entries)).toEqual(new Set(['trades.csv', 'trades.jsonl']));
+  expect(
+    trades.filter((t) => (t as any).entry === 'trades.jsonl')[0]?.seq,
+  ).toBe(0);
   rmSync(gzPath);
   rmSync(zipPath);
 });

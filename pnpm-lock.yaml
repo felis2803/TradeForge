@@ -58,6 +58,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@tradeforge/core':
+        specifier: workspace:^
+        version: link:../../packages/core
       '@tradeforge/io-binance':
         specifier: workspace:^
         version: link:../../packages/io-binance

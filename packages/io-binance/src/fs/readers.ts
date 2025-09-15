@@ -42,7 +42,10 @@ async function* openGzip(path: string): AsyncIterable<FileLines> {
 
 async function* openZip(path: string): AsyncIterable<FileLines> {
   const directory = await unzipper.Open.file(path);
-  for (const entry of directory.files) {
+  const entries = [...directory.files].sort((a, b) =>
+    a.path.localeCompare(b.path),
+  );
+  for (const entry of entries) {
     const stream = entry.stream();
     stream.setEncoding('utf8');
     yield { name: entry.path, lines: lineSplitter(stream) };

@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@tradeforge/io-binance": "workspace:^"
+    "@tradeforge/io-binance": "workspace:^",
+    "@tradeforge/core": "workspace:^"
   }
 }

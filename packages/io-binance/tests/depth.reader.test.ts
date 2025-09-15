@@ -19,7 +19,11 @@ test('depth jsonl', async () => {
   });
   const diffs = await collect(reader);
   expect(diffs).toHaveLength(2);
-  expect(fromPriceInt((diffs[0] as any).bids[0].price, 5)).toBe('10000');
+  expect(diffs[0]?.kind).toBe('depth');
+  expect(diffs[0]?.source).toBe('DEPTH');
+  expect(fromPriceInt((diffs[0] as any).payload.bids[0].price, 5)).toBe(
+    '10000',
+  );
 });
 
 test('gz limit and time filter', async () => {
@@ -34,6 +38,7 @@ test('gz limit and time filter', async () => {
   });
   const diffs = await collect(reader);
   expect(diffs).toHaveLength(1);
-  expect((diffs[0] as any).ts).toBe(1577836800000);
+  expect(Number((diffs[0] as any).ts)).toBe(1577836800000);
+  expect((diffs[0] as any).seq).toBe(0);
   rmSync(gzPath);
 });

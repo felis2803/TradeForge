@@ -1,5 +1,6 @@
 import { dumpTrades } from './commands/dumpTrades.js';
 import { dumpDepth } from './commands/dumpDepth.js';
+import { replayDryRun } from './commands/replayDryRun.js';
 
 export async function run(
   args: string[] = process.argv.slice(2),
@@ -18,7 +19,22 @@ export async function run(
     await dumpDepth(rest);
     return;
   }
-  console.log('TradeForge CLI: core-ready');
+  if (cmd === 'replay') {
+    const tail = [sub, ...rest].filter((v): v is string => Boolean(v));
+    if (tail[0] === '--dry-run') {
+      await replayDryRun(tail.slice(1));
+      return;
+    }
+    const idx = tail.indexOf('--dry-run');
+    if (idx >= 0) {
+      const forwarded = [...tail.slice(0, idx), ...tail.slice(idx + 1)];
+      await replayDryRun(forwarded);
+      return;
+    }
+  }
+  console.log(
+    'TradeForge CLI: available commands -> dump trades|depth, replay --dry-run',
+  );
 }
 
 run();
