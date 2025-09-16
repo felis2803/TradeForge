@@ -115,6 +115,58 @@ describe('stop orders', () => {
     expect(state.stopOrders.has(stopLimit.id)).toBe(false);
   });
 
+  it('applies activation time priority when stop joins resting orders', async () => {
+    const { state, accounts, orders } = createState();
+    const stopSeller = accounts.createAccount('stop-priority-seller');
+    const restingSeller = accounts.createAccount('resting-seller');
+    accounts.deposit(stopSeller.id, 'BTC', toQtyInt('1.000', QTY_SCALE));
+    accounts.deposit(restingSeller.id, 'BTC', toQtyInt('1.000', QTY_SCALE));
+
+    const stopOrder = orders.placeOrder({
+      accountId: stopSeller.id,
+      symbol: SYMBOL,
+      type: 'STOP_LIMIT',
+      side: 'SELL',
+      qty: toQtyInt('0.400', QTY_SCALE),
+      triggerPrice: toPriceInt('100', PRICE_SCALE),
+      triggerDirection: 'DOWN',
+      price: toPriceInt('100', PRICE_SCALE),
+    });
+
+    const restingOrder = orders.placeOrder({
+      accountId: restingSeller.id,
+      symbol: SYMBOL,
+      type: 'LIMIT',
+      side: 'SELL',
+      qty: toQtyInt('0.400', QTY_SCALE),
+      price: toPriceInt('100', PRICE_SCALE),
+    });
+
+    await collect(
+      executeTimeline(
+        (async function* () {
+          yield tradeEvent(5, '100', '0.400', 'prio', 'BUY');
+        })(),
+        state,
+      ),
+    );
+
+    const updatedStop = orders.getOrder(stopOrder.id);
+    const updatedResting = orders.getOrder(restingOrder.id);
+
+    expect(updatedResting.status).toBe('FILLED');
+    expect(updatedResting.executedQty).toEqual(toQtyInt('0.400', QTY_SCALE));
+
+    expect(updatedStop.activated).toBe(true);
+    expect(updatedStop.type).toBe('LIMIT');
+    expect(updatedStop.status).toBe('OPEN');
+    expect(updatedStop.executedQty).toEqual(toQtyInt('0', QTY_SCALE));
+
+    const stopCreatedTs = updatedStop.tsCreated as unknown as number;
+    const restingCreatedTs = updatedResting.tsCreated as unknown as number;
+    expect(stopCreatedTs).toBeGreaterThan(restingCreatedTs);
+  });
+
   it('activates STOP_MARKET sell and fills using aggressor liquidity', async () => {
     const { state, accounts, orders } = createState();
     const seller = accounts.createAccount('stop-market-seller');

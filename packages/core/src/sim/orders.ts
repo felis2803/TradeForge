@@ -322,8 +322,10 @@ export class OrdersService {
       throw new ValidationError('unknown symbol config for stop activation');
     }
     this.state.stopOrders.delete(order.id);
+    const activationTs = this.state.now();
     order.activated = true;
-    order.tsUpdated = params.ts;
+    order.tsCreated = activationTs;
+    order.tsUpdated = activationTs;
     if (order.type === 'STOP_LIMIT') {
       order.type = 'LIMIT';
       this.state.openOrders.set(order.id, order);
