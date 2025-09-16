@@ -87,6 +87,10 @@ importers:
       unzipper:
         specifier: ^0.12.3
         version: 0.12.3
+    devDependencies:
+      '@types/unzipper':
+        specifier: ^0.10.11
+        version: 0.10.11
 
 packages:
   '@babel/code-frame@7.27.1':
@@ -1167,6 +1171,12 @@ packages:
     resolution:
       {
         integrity: sha512-9aEbYZ3TbYMznPdcdr3SmIrLXwC/AKZXQeCf9Pgao5CKb8CyHuEX5jzWPTkvregvhRJHcpRO6BFoGW9ycaOkYw==,
+      }
+
+  '@types/unzipper@0.10.11':
+    resolution:
+      {
+        integrity: sha512-D25im2zjyMCcgL9ag6N46+wbtJBnXIr7SI4zHf9eJD2Dw2tEB5e+p5MYkrxKIVRscs5QV0EhtU9rgXSPx90oJg==,
       }
 
   '@types/yargs-parser@21.0.3':
@@ -4867,6 +4877,10 @@ snapshots:
       undici-types: 6.21.0
 
   '@types/stack-utils@2.0.3': {}
+
+  '@types/unzipper@0.10.11':
+    dependencies:
+      '@types/node': 22.18.3
 
   '@types/yargs-parser@21.0.3': {}
 
