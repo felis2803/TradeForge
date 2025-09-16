@@ -294,17 +294,20 @@ export async function simulate(argv: string[]): Promise<void> {
 
   if (printSummary) {
     const summary = buildSummary(state, accounts);
-    summary['config'] = {
-      symbol,
-      priceScale,
-      qtyScale,
-      ordersSeeded: placed.map((o) => ({
-        id: o.id,
-        side: o.side,
-        qty: o.qty,
-        price: o.price,
-      })),
+    const summaryWithConfig = {
+      ...summary,
+      config: {
+        symbol,
+        priceScale,
+        qtyScale,
+        ordersSeeded: placed.map((o) => ({
+          id: o.id,
+          side: o.side,
+          qty: o.qty,
+          price: o.price,
+        })),
+      },
     };
-    console.log(stringify(summary, 2));
+    console.log(stringify(summaryWithConfig, 2));
   }
 }
