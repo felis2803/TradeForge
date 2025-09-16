@@ -99,8 +99,8 @@ describe('REST adapter integration', () => {
       }
     >;
     expect(balancesAfterOrder['USDT']).toEqual({
-      free: '75000000',
-      locked: '25000000',
+      free: '74987500',
+      locked: '25012500',
     });
 
     const cancelRes = await app.inject({

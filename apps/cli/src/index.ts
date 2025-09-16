@@ -1,6 +1,7 @@
 import { dumpTrades } from './commands/dumpTrades.js';
 import { dumpDepth } from './commands/dumpDepth.js';
 import { replayDryRun } from './commands/replayDryRun.js';
+import { simulate } from './commands/simulate.js';
 
 export async function run(
   args: string[] = process.argv.slice(2),
@@ -32,8 +33,13 @@ export async function run(
       return;
     }
   }
+  if (cmd === 'simulate') {
+    const tail = [sub, ...rest].filter((v): v is string => Boolean(v));
+    await simulate(tail);
+    return;
+  }
   console.log(
-    'TradeForge CLI: available commands -> dump trades|depth, replay --dry-run',
+    'TradeForge CLI: available commands -> dump trades|depth, replay --dry-run, simulate',
   );
 }
 
