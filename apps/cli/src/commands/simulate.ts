@@ -5,13 +5,21 @@ import {
   ExchangeState,
   OrdersService,
   StaticMockOrderbook,
+  createAcceleratedClock,
+  createLogicalClock,
   createMergedStream,
+  createWallClock,
   executeTimeline,
+  runReplayBasic,
   toPriceInt,
   toQtyInt,
   type DepthEvent,
   type ExecutionReport,
+  type MergedEvent,
   type Order,
+  type ReplayLimits,
+  type ReplayStats,
+  type SimClock,
   type SymbolId,
   type TradeEvent,
 } from '@tradeforge/core';
@@ -89,6 +97,91 @@ function parseBool(value: string | undefined, defaultValue: boolean): boolean {
   if (lower === 'false' || lower === '0' || lower === 'no') return false;
   if (lower === 'true' || lower === '1' || lower === 'yes') return true;
   return defaultValue;
+}
+
+function parseNumberArg(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const num = Number(trimmed);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+interface AsyncEventQueue<T> {
+  iterable: AsyncIterable<T>;
+  push(value: T): void;
+  close(): void;
+}
+
+function createAsyncEventQueue<T>(): AsyncEventQueue<T> {
+  const values: T[] = [];
+  const waiting: Array<(result: IteratorResult<T>) => void> = [];
+  let closed = false;
+
+  function resolveNext(result: IteratorResult<T>): void {
+    const resolver = waiting.shift();
+    if (resolver) {
+      resolver(result);
+    }
+  }
+
+  return {
+    iterable: {
+      [Symbol.asyncIterator](): AsyncIterator<T> {
+        return {
+          next(): Promise<IteratorResult<T>> {
+            if (values.length > 0) {
+              const value = values.shift()!;
+              return Promise.resolve({ value, done: false });
+            }
+            if (closed) {
+              return Promise.resolve({
+                value: undefined as unknown as T,
+                done: true,
+              });
+            }
+            return new Promise((resolve) => {
+              waiting.push(resolve);
+            });
+          },
+          return(): Promise<IteratorResult<T>> {
+            closed = true;
+            values.length = 0;
+            while (waiting.length > 0) {
+              resolveNext({
+                value: undefined as unknown as T,
+                done: true,
+              });
+            }
+            return Promise.resolve({
+              value: undefined as unknown as T,
+              done: true,
+            });
+          },
+        } satisfies AsyncIterator<T>;
+      },
+    },
+    push(value: T) {
+      if (closed) return;
+      if (waiting.length > 0) {
+        resolveNext({ value, done: false });
+      } else {
+        values.push(value);
+      }
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      if (waiting.length > 0) {
+        while (waiting.length > 0) {
+          resolveNext({
+            value: undefined as unknown as T,
+            done: true,
+          });
+        }
+      }
+    },
+  };
 }
 
 function createEmptyStream(): AsyncIterable<DepthEvent> {
@@ -241,6 +334,42 @@ export async function simulate(argv: string[]): Promise<void> {
     args['use-aggressor-liquidity'],
     false,
   );
+  const clockMode = (args['clock'] ?? 'logical').toLowerCase();
+  const speedArg = parseNumberArg(args['speed']);
+  const maxEventsArg = parseNumberArg(args['max-events']);
+  const maxSimMsArg = parseNumberArg(args['max-sim-ms']);
+  const maxWallMsArg = parseNumberArg(args['max-wall-ms']);
+  let clock: SimClock;
+  switch (clockMode) {
+    case 'wall':
+      clock = createWallClock();
+      break;
+    case 'accel':
+    case 'accelerated': {
+      const speed = Math.max(speedArg ?? 10, 0);
+      clock = createAcceleratedClock(speed);
+      break;
+    }
+    case 'logical':
+      clock = createLogicalClock();
+      break;
+    default:
+      console.warn(`unknown clock "${clockMode}", falling back to logical`);
+      clock = createLogicalClock();
+      break;
+  }
+  const limits: ReplayLimits = {};
+  if (maxEventsArg !== undefined && maxEventsArg >= 0) {
+    limits.maxEvents = Math.floor(maxEventsArg);
+  }
+  if (maxSimMsArg !== undefined && maxSimMsArg >= 0) {
+    limits.maxSimTimeMs = maxSimMsArg;
+  }
+  if (maxWallMsArg !== undefined && maxWallMsArg >= 0) {
+    limits.maxWallTimeMs = maxWallMsArg;
+  }
+  const replayLimits: ReplayLimits | undefined =
+    Object.keys(limits).length > 0 ? limits : undefined;
   const timeFilter: { fromMs?: number; toMs?: number } = {};
   if (fromMs !== undefined) timeFilter.fromMs = fromMs;
   if (toMs !== undefined) timeFilter.toMs = toMs;
@@ -281,23 +410,73 @@ export async function simulate(argv: string[]): Promise<void> {
 
   const reports: ExecutionReport[] = [];
   let printed = 0;
-  for await (const report of executeTimeline(merged, state, {
+  const eventQueue = createAsyncEventQueue<MergedEvent>();
+  const execution = executeTimeline(eventQueue.iterable, state, {
     treatLimitAsMaker: treatAsMaker,
     participationFactor: strictConservative ? 0 : 1,
     useAggressorForLiquidity: useAggressorLiquidity,
-  })) {
-    reports.push(report);
-    if (ndjson) {
-      if (limit === undefined || printed < limit) {
-        console.log(stringify(report));
-        printed += 1;
+  });
+  const executionPromise = (async () => {
+    for await (const report of execution) {
+      reports.push(report);
+      if (ndjson) {
+        if (limit === undefined || printed < limit) {
+          console.log(stringify(report));
+          printed += 1;
+        }
       }
     }
+  })();
+
+  let replayStats: ReplayStats | undefined;
+  let replayError: unknown;
+  try {
+    replayStats = await runReplayBasic({
+      timeline: merged,
+      clock,
+      ...(replayLimits ? { limits: replayLimits } : {}),
+      onEvent: (event) => {
+        eventQueue.push(event);
+      },
+    });
+  } catch (err) {
+    replayError = err;
+  } finally {
+    eventQueue.close();
   }
+
+  try {
+    await executionPromise;
+  } catch (err) {
+    if (!replayError) {
+      replayError = err;
+    }
+  }
+
+  if (replayError) {
+    throw replayError;
+  }
+  if (!replayStats) {
+    throw new Error('replay aborted without stats');
+  }
+  const stats = replayStats;
 
   if (!ndjson && reports.length === 0) {
     console.log('no execution reports emitted (check filters or inputs)');
   }
+
+  const simDurationMs =
+    stats.simStartTs !== undefined && stats.simLastTs !== undefined
+      ? Number(stats.simLastTs) - Number(stats.simStartTs)
+      : 0;
+  const wallDurationMs = stats.wallLastMs - stats.wallStartMs;
+  const replaySummary = {
+    clock: clock.desc(),
+    eventsOut: stats.eventsOut,
+    simDurationMs,
+    wallDurationMs,
+  } satisfies Record<string, unknown>;
+  console.log(stringify(replaySummary, 2));
 
   if (printSummary) {
     const summary = buildSummary(state, accounts);
