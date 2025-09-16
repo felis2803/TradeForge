@@ -11,20 +11,23 @@ import type { Fill } from './types.js';
 interface LiquidityOptions {
   treatLimitAsMaker?: boolean;
   aggressorSide?: Side;
+  useAggressorForLiquidity?: boolean;
 }
 
 export function determineLiquidity(
   order: Order,
   options: LiquidityOptions = {},
 ): Liquidity {
+  if (options.useAggressorForLiquidity && options.aggressorSide) {
+    return options.aggressorSide === order.side ? 'TAKER' : 'MAKER';
+  }
+  if (order.type === 'MARKET') {
+    return 'TAKER';
+  }
   if (options.treatLimitAsMaker ?? true) {
     return 'MAKER';
   }
-  const aggressor = options.aggressorSide;
-  if (!aggressor) {
-    return 'TAKER';
-  }
-  return aggressor === order.side ? 'TAKER' : 'MAKER';
+  return 'TAKER';
 }
 
 export function createFill(params: {
@@ -34,6 +37,7 @@ export function createFill(params: {
   qty: QtyInt;
   liquidity: Liquidity;
   tradeRef?: string;
+  sourceAggressor?: Side;
 }): Fill {
   const fill: Fill = {
     ts: params.ts,
@@ -43,10 +47,20 @@ export function createFill(params: {
     side: params.order.side,
     liquidity: params.liquidity,
   };
+  if (params.sourceAggressor !== undefined) {
+    fill.sourceAggressor = params.sourceAggressor;
+  }
   if (params.tradeRef !== undefined) {
     fill.tradeRef = params.tradeRef;
   }
   return fill;
+}
+
+export function applyParticipationFactor(qty: QtyInt, factor: bigint): bigint {
+  if (factor <= 0n) {
+    return 0n;
+  }
+  return (qty as unknown as bigint) * factor;
 }
 
 export function compareOrdersForMatch(a: Order, b: Order): number {
@@ -69,6 +83,9 @@ export function getOrderRemainingQty(order: Order): QtyInt {
 }
 
 export function crossesLimitPrice(order: Order, tradePrice: PriceInt): boolean {
+  if (order.type === 'MARKET') {
+    return true;
+  }
   if (!order.price) {
     return false;
   }

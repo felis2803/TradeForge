@@ -14,6 +14,8 @@ export class ExchangeState {
   readonly fee: FeeConfig;
   readonly accounts: Map<AccountId, Account> = new Map();
   readonly orders: Map<OrderId, Order> = new Map();
+  readonly openOrders: Map<OrderId, Order> = new Map();
+  readonly stopOrders: Map<OrderId, Order> = new Map();
   readonly orderbook: OrderbookProvider;
   private accountSeq = 0;
   private orderSeq = 0;

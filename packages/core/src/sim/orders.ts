@@ -1,5 +1,12 @@
 import { isBid } from '../utils/guards.js';
-import type { NotionalInt, OrderId, QtyInt, SymbolId } from '../types/index.js';
+import type {
+  NotionalInt,
+  OrderId,
+  PriceInt,
+  QtyInt,
+  SymbolId,
+  TimestampMs,
+} from '../types/index.js';
 import type { Fill } from '../engine/types.js';
 import { AccountsService } from './accounts.js';
 import { ExchangeState } from './state.js';
@@ -11,6 +18,7 @@ import {
   type PlaceOrderInput,
   type RejectReason,
   type SymbolConfig,
+  type TriggerDirection,
   NotFoundError,
   ValidationError,
   calcFee,
@@ -39,11 +47,67 @@ function isWorkingStatus(status: Order['status']): boolean {
   return status === 'OPEN' || status === 'PARTIALLY_FILLED';
 }
 
+function isStopOrderType(
+  type: Order['type'] | PlaceOrderInput['type'],
+): type is 'STOP_LIMIT' | 'STOP_MARKET' {
+  return type === 'STOP_LIMIT' || type === 'STOP_MARKET';
+}
+
+function isTriggerDirection(value: unknown): value is TriggerDirection {
+  return value === 'UP' || value === 'DOWN';
+}
+
+function toRawQty(value: QtyInt): bigint {
+  return value as unknown as bigint;
+}
+
 export class OrdersService {
   constructor(
     private readonly state: ExchangeState,
     private readonly accounts: AccountsService,
   ) {}
+
+  private ensureReservationCapacity(
+    order: Order,
+    currency: Currency,
+    amount: bigint,
+  ): void {
+    if (amount < 0n) {
+      throw new ValidationError('reservation amount must be non-negative');
+    }
+    let reservation = order.reserved;
+    if (!reservation) {
+      if (amount === 0n) {
+        order.reserved = {
+          currency,
+          total: 0n,
+          remaining: 0n,
+        };
+        return;
+      }
+      if (!this.accounts.lock(order.accountId, currency, amount)) {
+        throw new ValidationError('insufficient balance to create reservation');
+      }
+      order.reserved = {
+        currency,
+        total: amount,
+        remaining: amount,
+      };
+      return;
+    }
+    if (reservation.currency !== currency) {
+      throw new ValidationError('reservation currency mismatch');
+    }
+    const diff = amount - reservation.remaining;
+    if (diff <= 0n) {
+      return;
+    }
+    if (!this.accounts.lock(order.accountId, currency, diff)) {
+      throw new ValidationError('insufficient balance to extend reservation');
+    }
+    reservation.total += diff;
+    reservation.remaining += diff;
+  }
 
   placeOrder(input: PlaceOrderInput): Order {
     const account = this.accounts.requireAccount(input.accountId);
@@ -81,6 +145,12 @@ export class OrdersService {
     if (input.price !== undefined) {
       order.price = input.price;
     }
+    if (input.triggerPrice !== undefined) {
+      order.triggerPrice = input.triggerPrice;
+    }
+    if (input.triggerDirection !== undefined) {
+      order.triggerDirection = input.triggerDirection;
+    }
 
     const symbolCfg = this.state.getSymbolConfig(input.symbol);
     if (!symbolCfg) {
@@ -90,40 +160,93 @@ export class OrdersService {
       return order;
     }
 
-    if (
-      input.type === 'MARKET' ||
-      input.type === 'STOP_LIMIT' ||
-      input.type === 'STOP_MARKET'
-    ) {
+    if (input.type === 'MARKET') {
       order.status = 'REJECTED';
       order.rejectReason = 'UNSUPPORTED_EXECUTION';
       this.state.orders.set(order.id, order);
       return order;
     }
 
-    if (input.type === 'LIMIT') {
-      if (input.price === undefined || input.price <= 0n) {
+    if (order.type === 'LIMIT' || order.type === 'STOP_LIMIT') {
+      if (order.price === undefined || order.price <= 0n) {
         throw new ValidationError('price must be positive for limit orders');
       }
     }
 
-    const reservation = this.tryReserve(order, symbolCfg);
-    if (!reservation.ok) {
+    const isStopOrder = isStopOrderType(order.type);
+    if (isStopOrder) {
+      const triggerPriceRaw = order.triggerPrice as unknown as
+        | bigint
+        | undefined;
+      if (triggerPriceRaw === undefined || triggerPriceRaw <= 0n) {
+        throw new ValidationError(
+          'triggerPrice must be positive for stop orders',
+        );
+      }
+      if (!isTriggerDirection(order.triggerDirection)) {
+        throw new ValidationError(
+          'triggerDirection must be UP or DOWN for stop orders',
+        );
+      }
+      order.activated = false;
+    } else {
+      delete order.triggerPrice;
+      delete order.triggerDirection;
+    }
+
+    if (order.type === 'STOP_MARKET') {
+      delete order.price;
+    }
+
+    let rejected: { reason: RejectReason } | undefined;
+    if (order.type === 'LIMIT' || order.type === 'STOP_LIMIT') {
+      const reservation = this.tryReserve(order, symbolCfg);
+      if (!reservation.ok) {
+        rejected = { reason: reservation.reason ?? 'UNKNOWN_SYMBOL' };
+      } else {
+        const { currency, total } = reservation.reservation;
+        order.reserved = {
+          currency,
+          total,
+          remaining: total,
+        };
+      }
+    } else if (order.type === 'STOP_MARKET') {
+      if (order.side === 'SELL') {
+        const qtyRaw = toRawQty(order.qty);
+        if (!this.accounts.lock(order.accountId, symbolCfg.base, qtyRaw)) {
+          rejected = { reason: 'INSUFFICIENT_FUNDS' };
+        } else {
+          order.reserved = {
+            currency: symbolCfg.base,
+            total: qtyRaw,
+            remaining: qtyRaw,
+          };
+        }
+      } else {
+        order.reserved = {
+          currency: symbolCfg.quote,
+          total: 0n,
+          remaining: 0n,
+        };
+      }
+    }
+
+    if (rejected) {
       order.status = 'REJECTED';
-      order.rejectReason = reservation.reason ?? 'UNKNOWN_SYMBOL';
+      order.rejectReason = rejected.reason;
       this.state.orders.set(order.id, order);
       return order;
     }
 
-    const { currency, total } = reservation.reservation;
     order.status = 'OPEN';
     delete order.rejectReason;
-    order.reserved = {
-      currency,
-      total,
-      remaining: total,
-    };
     this.state.orders.set(order.id, order);
+    if (isStopOrder) {
+      this.state.stopOrders.set(order.id, order);
+    } else {
+      this.state.openOrders.set(order.id, order);
+    }
     return order;
   }
 
@@ -135,6 +258,8 @@ export class OrdersService {
     if (order.status !== 'OPEN' && order.status !== 'PARTIALLY_FILLED') {
       return order;
     }
+    this.state.openOrders.delete(order.id);
+    this.state.stopOrders.delete(order.id);
     const reservation = order.reserved;
     if (reservation && reservation.remaining > 0n) {
       this.accounts.unlock(
@@ -170,11 +295,62 @@ export class OrdersService {
   }
 
   *getOpenOrders(symbol?: SymbolId): Iterable<Order> {
-    for (const order of this.state.orders.values()) {
+    for (const order of this.state.openOrders.values()) {
       if (!isWorkingStatus(order.status)) continue;
       if (symbol && order.symbol !== symbol) continue;
       yield order;
     }
+  }
+
+  *getStopOrders(symbol?: SymbolId): Iterable<Order> {
+    for (const order of this.state.stopOrders.values()) {
+      if (!isWorkingStatus(order.status)) continue;
+      if (symbol && order.symbol !== symbol) continue;
+      yield order;
+    }
+  }
+
+  activateStopOrder(
+    order: Order,
+    params: { ts: TimestampMs; tradePrice: PriceInt },
+  ): Order {
+    if (!isStopOrderType(order.type)) {
+      return order;
+    }
+    const symbolCfg = this.state.getSymbolConfig(order.symbol);
+    if (!symbolCfg) {
+      throw new ValidationError('unknown symbol config for stop activation');
+    }
+    this.state.stopOrders.delete(order.id);
+    order.activated = true;
+    order.tsUpdated = params.ts;
+    if (order.type === 'STOP_LIMIT') {
+      order.type = 'LIMIT';
+      this.state.openOrders.set(order.id, order);
+      return order;
+    }
+    order.type = 'MARKET';
+    delete order.price;
+    const qtyRaw = toRawQty(order.qty);
+    if (isBid(order.side)) {
+      const tradePriceRaw = params.tradePrice as unknown as bigint;
+      const activationNotional = calcNotional(
+        tradePriceRaw,
+        qtyRaw,
+        symbolCfg.qtyScale,
+      );
+      const activationNotionalRaw = activationNotional as unknown as bigint;
+      const feeReserve = calcFee(activationNotional, this.state.fee.takerBps);
+      this.ensureReservationCapacity(
+        order,
+        symbolCfg.quote,
+        activationNotionalRaw + feeReserve,
+      );
+    } else {
+      this.ensureReservationCapacity(order, symbolCfg.base, qtyRaw);
+    }
+    this.state.openOrders.set(order.id, order);
+    return order;
   }
 
   applyFill(orderId: OrderId, fill: Fill): Order {
@@ -197,15 +373,13 @@ export class OrdersService {
         ? this.state.fee.takerBps
         : this.state.fee.makerBps;
     const fee = calcFee(notional, feeBps);
-    const reservation = order.reserved;
-    if (!reservation) {
-      throw new ValidationError('order has no active reservation');
-    }
 
     if (isBid(order.side)) {
       const spend = notionalRaw + fee;
-      if (reservation.remaining < spend) {
-        throw new ValidationError('insufficient reserved quote for fill');
+      this.ensureReservationCapacity(order, symbolCfg.quote, spend);
+      const reservation = order.reserved;
+      if (!reservation) {
+        throw new ValidationError('order has no active reservation');
       }
       this.accounts.consumeLocked(
         order.accountId,
@@ -218,8 +392,10 @@ export class OrdersService {
       reservation.remaining -= spend;
       this.accounts.deposit(order.accountId, symbolCfg.base, fillQtyRaw);
     } else {
-      if (reservation.remaining < fillQtyRaw) {
-        throw new ValidationError('insufficient reserved base for fill');
+      this.ensureReservationCapacity(order, symbolCfg.base, fillQtyRaw);
+      const reservation = order.reserved;
+      if (!reservation) {
+        throw new ValidationError('order has no active reservation');
       }
       this.accounts.consumeLocked(order.accountId, symbolCfg.base, fillQtyRaw);
       reservation.remaining -= fillQtyRaw;
@@ -255,6 +431,8 @@ export class OrdersService {
     if (!order) {
       throw new NotFoundError(`Order ${String(orderId)} not found`);
     }
+    this.state.openOrders.delete(order.id);
+    this.state.stopOrders.delete(order.id);
     if (order.status === 'FILLED') {
       if (order.side === 'BUY') {
         this.accounts.releaseUnusedQuoteOnClose(order);
@@ -282,7 +460,7 @@ export class OrdersService {
   ):
     | { ok: true; reservation: { currency: Currency; total: bigint } }
     | { ok: false; reason: RejectReason } {
-    if (order.type !== 'LIMIT') {
+    if (order.type !== 'LIMIT' && order.type !== 'STOP_LIMIT') {
       return { ok: false, reason: 'UNSUPPORTED_EXECUTION' };
     }
     if (!order.price) {

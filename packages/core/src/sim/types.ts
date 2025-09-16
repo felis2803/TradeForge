@@ -34,6 +34,7 @@ export interface SymbolConfig {
 export type OrderType = 'LIMIT' | 'MARKET' | 'STOP_LIMIT' | 'STOP_MARKET';
 export type OrderSide = 'BUY' | 'SELL';
 export type TimeInForce = 'GTC' | 'IOC' | 'FOK';
+export type TriggerDirection = 'UP' | 'DOWN';
 export type OrderStatus =
   | 'NEW'
   | 'OPEN'
@@ -57,6 +58,9 @@ export interface Order {
   side: OrderSide;
   tif: TimeInForce;
   price?: PriceInt;
+  triggerPrice?: PriceInt;
+  triggerDirection?: TriggerDirection;
+  activated?: boolean;
   qty: QtyInt;
   status: OrderStatus;
   rejectReason?: RejectReason;
@@ -94,6 +98,8 @@ export interface PlaceOrderInput {
   qty: QtyInt;
   price?: PriceInt;
   tif?: TimeInForce;
+  triggerPrice?: PriceInt;
+  triggerDirection?: TriggerDirection;
 }
 
 export interface CancelOrderResult extends Order {}

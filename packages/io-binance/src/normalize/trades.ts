@@ -44,6 +44,7 @@ export function normalizeTrade(
     raw[mapping.id] !== undefined ? String(raw[mapping.id]) : undefined;
   const trade: Trade = { ts, symbol: opts.symbol, price, qty };
   if (sideVal !== undefined) trade.side = sideVal;
+  if (sideVal !== undefined) trade.aggressor = sideVal;
   if (id !== undefined) trade.id = id;
   return trade;
 }

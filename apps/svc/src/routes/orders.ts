@@ -19,6 +19,8 @@ interface PlaceOrderBody {
   qty: string;
   price?: string;
   tif?: PlaceOrderInput['tif'];
+  triggerPrice?: string;
+  triggerDirection?: 'UP' | 'DOWN';
 }
 
 function getScales(
@@ -70,16 +72,38 @@ export function registerOrdersRoutes(
     const { priceScale, qtyScale } = getScales(ctx, body.symbol);
     try {
       const qty = toQtyInt(body.qty, qtyScale);
-      // Для LIMIT цена обязательна — отвечаем 400 до вызова сервиса
-      if (body.type === 'LIMIT' && body.price === undefined) {
+      const requiresPrice = body.type === 'LIMIT' || body.type === 'STOP_LIMIT';
+      if (requiresPrice && body.price === undefined) {
         return reply
           .status(400)
-          .send({ message: 'price is required for LIMIT' });
+          .send({ message: `price is required for ${body.type}` });
       }
       const price =
         body.price !== undefined
           ? toPriceInt(body.price, priceScale)
           : undefined;
+      let triggerPrice: ReturnType<typeof toPriceInt> | undefined;
+      let triggerDirection: PlaceOrderInput['triggerDirection'] | undefined;
+      if (body.type === 'STOP_LIMIT' || body.type === 'STOP_MARKET') {
+        if (body.triggerPrice === undefined) {
+          return reply
+            .status(400)
+            .send({ message: 'triggerPrice is required for stop orders' });
+        }
+        if (body.triggerDirection === undefined) {
+          return reply
+            .status(400)
+            .send({ message: 'triggerDirection is required for stop orders' });
+        }
+        const dir = body.triggerDirection.toUpperCase();
+        if (dir !== 'UP' && dir !== 'DOWN') {
+          return reply
+            .status(400)
+            .send({ message: 'triggerDirection must be UP or DOWN' });
+        }
+        triggerDirection = dir as PlaceOrderInput['triggerDirection'];
+        triggerPrice = toPriceInt(body.triggerPrice, priceScale);
+      }
       const input: PlaceOrderInput = {
         accountId: body.accountId as AccountId,
         symbol: body.symbol as SymbolId,
@@ -90,6 +114,12 @@ export function registerOrdersRoutes(
       };
       if (price !== undefined) {
         input.price = price;
+      }
+      if (triggerPrice !== undefined) {
+        input.triggerPrice = triggerPrice;
+      }
+      if (triggerDirection !== undefined) {
+        input.triggerDirection = triggerDirection;
       }
       const order = ctx.orders.placeOrder(input);
       reply.send(serializeBigInt(order));
