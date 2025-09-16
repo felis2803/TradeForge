@@ -3,6 +3,11 @@
     "target": "ES2022",
     "module": "node16",
     "moduleResolution": "node16",
+    "baseUrl": ".",
+    "paths": {
+      "@tradeforge/core": ["packages/core/src/index.ts"],
+      "@tradeforge/io-binance": ["packages/io-binance/src/index.ts"]
+    },
     "strict": true,
     "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
