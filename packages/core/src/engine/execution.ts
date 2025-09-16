@@ -3,18 +3,17 @@ import type { ExchangeState } from '../sim/state.js';
 import { AccountsService } from '../sim/accounts.js';
 import { OrdersService } from '../sim/orders.js';
 import type { Order } from '../sim/types.js';
-import type { QtyInt, TimestampMs } from '../types/index.js';
+import type { PriceInt, QtyInt, TimestampMs } from '../types/index.js';
 import {
   cloneFees,
   compareOrdersForMatch,
   createFill,
   crossesLimitPrice,
   determineLiquidity,
+  applyParticipationFactor,
   getOrderRemainingQty,
 } from './utils.js';
 import type { ExecutionOptions, ExecutionReport } from './types.js';
-
-const PARTICIPATION_FACTOR = 1n; // TODO: expose via options for strict conservative mode
 
 function minQty(a: bigint, b: bigint): bigint {
   return a < b ? a : b;
@@ -22,6 +21,24 @@ function minQty(a: bigint, b: bigint): bigint {
 
 function toQtyInt(value: bigint): QtyInt {
   return value as QtyInt;
+}
+
+function shouldTriggerStop(order: Order, tradePrice: PriceInt): boolean {
+  if (order.activated) {
+    return false;
+  }
+  if (order.type !== 'STOP_LIMIT' && order.type !== 'STOP_MARKET') {
+    return false;
+  }
+  if (!order.triggerPrice || !order.triggerDirection) {
+    return false;
+  }
+  const triggerPriceRaw = order.triggerPrice as unknown as bigint;
+  const tradePriceRaw = tradePrice as unknown as bigint;
+  if (order.triggerDirection === 'UP') {
+    return tradePriceRaw >= triggerPriceRaw;
+  }
+  return tradePriceRaw <= triggerPriceRaw;
 }
 
 function buildOrderPatch(order: Order): Partial<Order> {
@@ -42,6 +59,8 @@ export async function* executeTimeline(
   const accounts = new AccountsService(state);
   const orders = new OrdersService(state, accounts);
   const treatLimitAsMaker = options.treatLimitAsMaker ?? true;
+  const participationFactor = BigInt(options.participationFactor ?? 1);
+  const useAggressorForLiquidity = options.useAggressorForLiquidity ?? false;
   let lastTs: TimestampMs | undefined;
 
   for await (const event of timeline) {
@@ -50,13 +69,30 @@ export async function* executeTimeline(
       continue;
     }
     const trade = event.payload;
+    const stopOrders = Array.from(orders.getStopOrders(trade.symbol));
+    if (stopOrders.length > 0) {
+      const triggeredStops = stopOrders.filter((order) =>
+        shouldTriggerStop(order, trade.price),
+      );
+      if (triggeredStops.length > 0) {
+        triggeredStops.sort(compareOrdersForMatch);
+        for (const stopOrder of triggeredStops) {
+          orders.activateStopOrder(stopOrder, {
+            ts: event.ts,
+            tradePrice: trade.price,
+          });
+        }
+      }
+    }
     const openOrders = Array.from(orders.getOpenOrders(trade.symbol));
     if (openOrders.length === 0) {
       continue;
     }
     openOrders.sort(compareOrdersForMatch);
-    let remainingTradeQty =
-      (trade.qty as unknown as bigint) * PARTICIPATION_FACTOR;
+    let remainingTradeQty = applyParticipationFactor(
+      trade.qty,
+      participationFactor,
+    );
     if (remainingTradeQty <= 0n) {
       continue;
     }
@@ -78,9 +114,11 @@ export async function* executeTimeline(
         continue;
       }
       const fillQty = toQtyInt(fillQtyRaw);
+      const aggressorSide = trade.aggressor ?? trade.side;
       const liquidity = determineLiquidity(order, {
         treatLimitAsMaker,
-        ...(trade.side ? { aggressorSide: trade.side } : {}),
+        useAggressorForLiquidity,
+        ...(aggressorSide ? { aggressorSide } : {}),
       });
       const fill = createFill({
         ts: event.ts,
@@ -89,6 +127,7 @@ export async function* executeTimeline(
         qty: fillQty,
         liquidity,
         ...(trade.id ? { tradeRef: trade.id } : {}),
+        ...(aggressorSide ? { sourceAggressor: aggressorSide } : {}),
       });
       const updated = orders.applyFill(order.id, fill);
       remainingTradeQty -= fillQtyRaw;

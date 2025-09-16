@@ -236,6 +236,11 @@ export async function simulate(argv: string[]): Promise<void> {
   const printSummary = parseBool(args['summary'], true);
   const preferDepth = parseBool(args['prefer-depth-on-equal-ts'], true);
   const treatAsMaker = parseBool(args['treat-limit-as-maker'], true);
+  const strictConservative = parseBool(args['strict-conservative'], false);
+  const useAggressorLiquidity = parseBool(
+    args['use-aggressor-liquidity'],
+    false,
+  );
   const timeFilter: { fromMs?: number; toMs?: number } = {};
   if (fromMs !== undefined) timeFilter.fromMs = fromMs;
   if (toMs !== undefined) timeFilter.toMs = toMs;
@@ -278,6 +283,8 @@ export async function simulate(argv: string[]): Promise<void> {
   let printed = 0;
   for await (const report of executeTimeline(merged, state, {
     treatLimitAsMaker: treatAsMaker,
+    participationFactor: strictConservative ? 0 : 1,
+    useAggressorForLiquidity: useAggressorLiquidity,
   })) {
     reports.push(report);
     if (ndjson) {

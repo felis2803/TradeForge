@@ -16,6 +16,7 @@ export interface Fill {
   side: Side;
   liquidity: Liquidity;
   tradeRef?: string;
+  sourceAggressor?: Side;
 }
 
 export type ExecutionReportKind = 'FILL' | 'ORDER_UPDATED' | 'END';
@@ -31,4 +32,6 @@ export interface ExecutionReport {
 export interface ExecutionOptions {
   preferDepthOnEqualTs?: boolean;
   treatLimitAsMaker?: boolean;
+  participationFactor?: 0 | 1;
+  useAggressorForLiquidity?: boolean;
 }

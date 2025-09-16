@@ -15,6 +15,7 @@ export interface Trade {
   price: PriceInt;
   qty: QtyInt;
   side?: Side;
+  aggressor?: Side;
   id?: string;
 }
 
