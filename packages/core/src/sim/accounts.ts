@@ -4,6 +4,7 @@ import {
   type AccountId,
   type Balances,
   type Currency,
+  type Order,
   NotFoundError,
   ValidationError,
 } from './types.js';
@@ -106,5 +107,78 @@ export class AccountsService {
     }
     balance.locked -= amount;
     balance.free += amount;
+  }
+
+  consumeLocked(
+    accountId: AccountId,
+    currency: Currency,
+    amount: bigint,
+  ): void {
+    if (amount < 0n) {
+      throw new ValidationError('amount must be non-negative');
+    }
+    if (amount === 0n) {
+      return;
+    }
+    const account = this.requireAccount(accountId);
+    const balance = this.getBalanceRef(account, currency);
+    if (balance.locked < amount) {
+      throw new ValidationError('insufficient locked balance');
+    }
+    balance.locked -= amount;
+  }
+
+  applyTradeFees(
+    accountId: AccountId,
+    currency: Currency,
+    fee: bigint,
+    opts: { preferLocked?: boolean } = {},
+  ): void {
+    if (fee < 0n) {
+      throw new ValidationError('fee must be non-negative');
+    }
+    if (fee === 0n) {
+      return;
+    }
+    const preferLocked = opts.preferLocked ?? true;
+    const account = this.requireAccount(accountId);
+    const balance = this.getBalanceRef(account, currency);
+    if (preferLocked) {
+      if (balance.locked >= fee) {
+        balance.locked -= fee;
+        return;
+      }
+      if (balance.free >= fee) {
+        balance.free -= fee;
+        return;
+      }
+    } else {
+      if (balance.free >= fee) {
+        balance.free -= fee;
+        return;
+      }
+      if (balance.locked >= fee) {
+        balance.locked -= fee;
+        return;
+      }
+    }
+    throw new ValidationError('insufficient balance to apply fee');
+  }
+
+  releaseUnusedQuoteOnClose(order: Order): bigint {
+    if (order.side !== 'BUY') {
+      return 0n;
+    }
+    const reservation = order.reserved;
+    if (!reservation) {
+      return 0n;
+    }
+    const remaining = reservation.remaining;
+    if (remaining <= 0n) {
+      return 0n;
+    }
+    this.unlock(order.accountId, reservation.currency, remaining);
+    reservation.remaining = 0n;
+    return remaining;
   }
 }

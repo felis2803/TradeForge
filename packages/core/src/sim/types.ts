@@ -1,11 +1,13 @@
 import type { brand } from '../types/brands.js';
 import type {
+  NotionalInt,
   OrderId,
   PriceInt,
   QtyInt,
   SymbolId,
   TimestampMs,
 } from '../types/index.js';
+import type { Fill } from '../engine/types.js';
 import type { OrderbookProvider } from './orderbook.mock.js';
 
 export type AccountId = brand<string, 'AccountId'>;
@@ -32,7 +34,13 @@ export interface SymbolConfig {
 export type OrderType = 'LIMIT' | 'MARKET' | 'STOP_LIMIT' | 'STOP_MARKET';
 export type OrderSide = 'BUY' | 'SELL';
 export type TimeInForce = 'GTC' | 'IOC' | 'FOK';
-export type OrderStatus = 'NEW' | 'OPEN' | 'CANCELED' | 'REJECTED';
+export type OrderStatus =
+  | 'NEW'
+  | 'OPEN'
+  | 'PARTIALLY_FILLED'
+  | 'FILLED'
+  | 'CANCELED'
+  | 'REJECTED';
 
 export type RejectReason =
   | 'UNSUPPORTED_EXECUTION'
@@ -53,6 +61,18 @@ export interface Order {
   status: OrderStatus;
   rejectReason?: RejectReason;
   accountId: AccountId;
+  executedQty: QtyInt;
+  cumulativeQuote: NotionalInt;
+  fees: {
+    maker?: bigint;
+    taker?: bigint;
+  };
+  fills: Fill[];
+  reserved?: {
+    currency: Currency;
+    total: bigint;
+    remaining: bigint;
+  };
 }
 
 export interface FeeConfig {

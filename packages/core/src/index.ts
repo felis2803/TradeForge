@@ -4,3 +4,5 @@ export * from './fp/scale.js';
 export * from './utils/guards.js';
 export * from './merge/timeline.js';
 export * from './sim/index.js';
+export * from './engine/execution.js';
+export * from './engine/types.js';
