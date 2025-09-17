@@ -72,7 +72,17 @@ test('loadCheckpoint rejects non-integer createdAtMs', async () => {
   base.createdAtMs = 1.23;
   await withCheckpointFile(base, async (filePath) => {
     await expect(loadCheckpoint(filePath)).rejects.toThrow(
-      'checkpoint createdAtMs must be an integer',
+      'checkpoint createdAtMs must be a non-negative integer',
+    );
+  });
+});
+
+test('loadCheckpoint rejects negative createdAtMs', async () => {
+  const base = createCheckpointPayload();
+  base.createdAtMs = -1;
+  await withCheckpointFile(base, async (filePath) => {
+    await expect(loadCheckpoint(filePath)).rejects.toThrow(
+      'checkpoint createdAtMs must be a non-negative integer',
     );
   });
 });

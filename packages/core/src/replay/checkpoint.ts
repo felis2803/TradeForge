@@ -659,11 +659,8 @@ function validateCheckpointPayload(data: unknown): CheckpointV1 {
   const meta = ensureObject(parsed['meta'], 'meta');
   ensureNonEmptyString(meta['symbol'], 'meta.symbol');
   const createdAtMs = ensureNumber(parsed['createdAtMs'], 'createdAtMs');
-  if (!Number.isInteger(createdAtMs)) {
-    throw new Error('checkpoint createdAtMs must be an integer');
-  }
-  if (createdAtMs < 0) {
-    throw new Error('checkpoint createdAtMs must be >= 0');
+  if (!Number.isInteger(createdAtMs) || createdAtMs < 0) {
+    throw new Error('checkpoint createdAtMs must be a non-negative integer');
   }
   const note = meta['note'];
   if (note !== undefined && note !== null && typeof note !== 'string') {
