@@ -27,3 +27,10 @@ export interface RunReplayBasicOptions {
   limits?: ReplayLimits;
   onEvent?: (event: MergedEvent, stats: ReplayStats) => void;
 }
+
+export type {
+  CoreReaderCursor,
+  EngineSnapshot,
+  SerializedExchangeState,
+  CheckpointV1,
+} from './checkpoint.js';

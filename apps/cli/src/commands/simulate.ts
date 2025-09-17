@@ -10,6 +10,7 @@ import {
   createMergedStream,
   createWallClock,
   executeTimeline,
+  makeCheckpointV1,
   runReplayBasic,
   toPriceInt,
   toQtyInt,
@@ -22,6 +23,9 @@ import {
   type SimClock,
   type SymbolId,
   type TradeEvent,
+  type CheckpointV1,
+  type CoreReaderCursor,
+  type MergeStartState,
 } from '@tradeforge/core';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
@@ -309,6 +313,82 @@ function buildSummary(
   }
   return { totals, orders: ordersSummary, balances };
 }
+
+type DebugCursorSource = { currentCursor?: () => unknown };
+
+function normalizeCursorValue(raw: unknown): CoreReaderCursor {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('invalid cursor value');
+  }
+  const record = raw as Record<string, unknown>;
+  const file = record['file'];
+  const recordIndex = record['recordIndex'];
+  if (typeof file !== 'string' || typeof recordIndex !== 'number') {
+    throw new Error('cursor must contain file:string and recordIndex:number');
+  }
+  const cursor: CoreReaderCursor = { file, recordIndex };
+  const entryValue = record['entry'];
+  if (typeof entryValue === 'string') {
+    cursor.entry = entryValue;
+  }
+  return cursor;
+}
+
+function getCursorFromSource(
+  source?: DebugCursorSource,
+): CoreReaderCursor | undefined {
+  if (!source || typeof source.currentCursor !== 'function') {
+    return undefined;
+  }
+  const current = source.currentCursor();
+  if (!current) {
+    return undefined;
+  }
+  return normalizeCursorValue(current);
+}
+
+const debugCheckpointHelpers = process.env['TF_DEBUG_CP']
+  ? {
+      collectCursors(readers: {
+        trades?: DebugCursorSource;
+        depth?: DebugCursorSource;
+      }): { trades?: CoreReaderCursor; depth?: CoreReaderCursor } {
+        const result: { trades?: CoreReaderCursor; depth?: CoreReaderCursor } =
+          {};
+        const trades = getCursorFromSource(readers.trades);
+        if (trades) {
+          result.trades = trades;
+        }
+        const depth = getCursorFromSource(readers.depth);
+        if (depth) {
+          result.depth = depth;
+        }
+        return result;
+      },
+      makeCheckpoint(params: {
+        symbol: SymbolId;
+        state: ExchangeState;
+        cursors: { trades?: CoreReaderCursor; depth?: CoreReaderCursor };
+        merge?: MergeStartState;
+        note?: string;
+      }): CheckpointV1 {
+        const payload: Parameters<typeof makeCheckpointV1>[0] = {
+          symbol: params.symbol,
+          state: params.state,
+          cursors: params.cursors,
+        };
+        if (params.merge) {
+          payload.merge = params.merge;
+        }
+        if (params.note) {
+          payload.note = params.note;
+        }
+        return makeCheckpointV1(payload);
+      },
+    }
+  : undefined;
+
+export const __debugCheckpoint = debugCheckpointHelpers;
 
 export async function simulate(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
