@@ -12,7 +12,8 @@ pnpm --filter @tradeforge/svc exec -- tf-svc
 ## Формат данных
 
 - Все числовые значения передаются и возвращаются в виде строк. Это сохраняет точность `bigint` и избавляет от накопления ошибок фиксированной точности.
-- Для каждой торговой пары в конфигурации движка хранится `qtyScale` (для базовой валюты) и `priceScale` (для котируемой). Например, баланс BTC масштабируется `qtyScale`, а суммы в USDT — `priceScale`.
+- Масштабирование завязано на символ: `qtyScale` применяется к базовой валюте (объёмы, `qty`), `priceScale` — к котируемой (цены, `price`, `triggerPrice`, `notional`).
+- При работе с REST передавайте строки «как есть» — сервис сам нормализует значения в соответствии со scale.
 
 ## Эндпойнты
 
@@ -44,6 +45,14 @@ curl -X POST http://localhost:3000/v1/accounts/a1/deposit \
 # { "USDT": "1000" }
 ```
 
+```bash
+curl -i -X POST http://localhost:3000/v1/accounts/a1/deposit \
+  -H 'Content-Type: application/json' \
+  -d '{"currency":"XYZ","amount":"1"}'
+# HTTP/1.1 400 Bad Request
+# {"message":"unknown currency: XYZ"}
+```
+
 ### GET `/v1/accounts/:id/balances`
 
 Возвращает моментальный снимок балансов по счёту (строковые значения).
@@ -73,6 +82,8 @@ curl http://localhost:3000/v1/accounts/a1/balances
 - `triggerPrice is required for stop orders` / `triggerDirection is required for stop orders`.
 - `triggerDirection must be UP or DOWN` — если значение вне допустимого множества.
 
+#### LIMIT
+
 ```bash
 curl -X POST http://localhost:3000/v1/orders \
   -H 'Content-Type: application/json' \
@@ -94,6 +105,52 @@ curl -X POST http://localhost:3000/v1/orders \
 #   "status": "OPEN",
 #   ...
 # }
+```
+
+```bash
+curl -i -X POST http://localhost:3000/v1/orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "accountId": "a1",
+    "symbol": "BTCUSDT",
+    "type": "LIMIT",
+    "side": "BUY",
+    "qty": "0.01"
+  }'
+# HTTP/1.1 400 Bad Request
+# {"message":"price is required for LIMIT"}
+```
+
+#### STOP_LIMIT / STOP_MARKET
+
+```bash
+curl -X POST http://localhost:3000/v1/orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "accountId": "a1",
+    "symbol": "BTCUSDT",
+    "type": "STOP_LIMIT",
+    "side": "SELL",
+    "qty": "0.02",
+    "price": "26000",
+    "triggerPrice": "25500",
+    "triggerDirection": "DOWN"
+  }'
+# { "id": "o2", "type": "STOP_LIMIT", ... }
+```
+
+```bash
+curl -i -X POST http://localhost:3000/v1/orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "accountId": "a1",
+    "symbol": "BTCUSDT",
+    "type": "STOP_MARKET",
+    "side": "SELL",
+    "qty": "0.02"
+  }'
+# HTTP/1.1 400 Bad Request
+# {"message":"triggerPrice is required for stop orders"}
 ```
 
 ### GET `/v1/orders/:id`
