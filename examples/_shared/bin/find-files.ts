@@ -75,7 +75,7 @@ function matchesKind(file: string, kind?: 'trades' | 'depth'): boolean {
 async function run(): Promise<void> {
   try {
     const { patterns, options } = parseArgs(process.argv.slice(2));
-    const files = (await fg(patterns, {
+    const files = await fg<string>(patterns, {
       cwd: options.cwd,
       dot: false,
       onlyFiles: true,
