@@ -367,11 +367,18 @@ async function runCli(args: string[]): Promise<{
   return { logs, errors, exitCode };
 }
 
-function parseSummary(lines: string[]): Record<string, unknown> {
+interface ResumeSummary {
+  totals: unknown;
+  orders: unknown;
+  balances: unknown;
+  config: { priceScale: unknown; qtyScale: unknown };
+}
+
+function parseSummary(lines: string[]): ResumeSummary {
   for (let i = lines.length - 1; i >= 0; i -= 1) {
     const candidate = lines[i]?.trim();
     if (candidate && candidate.startsWith('{')) {
-      return JSON.parse(candidate) as Record<string, unknown>;
+      return JSON.parse(candidate) as ResumeSummary;
     }
   }
   throw new Error('summary JSON not found in CLI output');

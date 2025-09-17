@@ -85,12 +85,17 @@ async function openGzip(path: string): Promise<JsonlSource> {
 }
 
 async function openZip(path: string): Promise<JsonlSource> {
-  const directory = await unzipper.Open.file(path);
+  const directory = await unzipper.Open.file(path).catch((err: unknown) => {
+    if (err instanceof Error && err.message === 'FILE_ENDED') {
+      throw new Error('multi-entry zip not supported');
+    }
+    throw err;
+  });
   const entries = [...directory.files].sort((a, b) =>
     a.path.localeCompare(b.path),
   );
   if (entries.length !== 1) {
-    throw new Error('multi-entry zip is not supported in PR-8b');
+    throw new Error('multi-entry zip not supported');
   }
   const entry = entries[0];
   if (!isJsonl(entry.path)) {

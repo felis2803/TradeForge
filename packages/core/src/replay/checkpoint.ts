@@ -570,13 +570,99 @@ export async function saveCheckpoint(
   await writeFile(path, json, 'utf8');
 }
 
-export async function loadCheckpoint(path: string): Promise<CheckpointV1> {
-  const raw = await readFile(path, 'utf8');
-  const parsed = JSON.parse(raw) as CheckpointV1;
-  if (!parsed || parsed.version !== 1) {
+function ensureObject(value: unknown, path: string): Record<string, unknown> {
+  if (value === undefined || value === null) {
+    throw new Error(`checkpoint is missing required field: ${path}`);
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`checkpoint ${path} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function ensureString(value: unknown, path: string): string {
+  if (value === undefined || value === null) {
+    throw new Error(`checkpoint is missing required field: ${path}`);
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`checkpoint ${path} must be a string`);
+  }
+  return value;
+}
+
+function ensureNumber(value: unknown, path: string): number {
+  if (value === undefined || value === null) {
+    throw new Error(`checkpoint is missing required field: ${path}`);
+  }
+  if (
+    typeof value !== 'number' ||
+    Number.isNaN(value) ||
+    !Number.isFinite(value)
+  ) {
+    throw new Error(`checkpoint ${path} must be a finite number`);
+  }
+  return value;
+}
+
+function ensureArray(value: unknown, path: string): unknown[] {
+  if (value === undefined || value === null) {
+    throw new Error(`checkpoint is missing required field: ${path}`);
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`checkpoint ${path} must be an array`);
+  }
+  return value;
+}
+
+function validateCursor(name: string, value: unknown): void {
+  const cursor = ensureObject(value, `cursors.${name}`);
+  ensureString(cursor['file'], `cursors.${name}.file`);
+  const entry = cursor['entry'];
+  if (entry !== undefined && typeof entry !== 'string') {
+    throw new Error(`checkpoint cursors.${name}.entry must be a string`);
+  }
+  const recordIndex = ensureNumber(
+    cursor['recordIndex'],
+    `cursors.${name}.recordIndex`,
+  );
+  if (!Number.isInteger(recordIndex)) {
+    throw new Error(`cursors.${name}.recordIndex must be an integer`);
+  }
+  if (recordIndex < 0) {
+    throw new Error(`cursors.${name}.recordIndex must be >= 0`);
+  }
+}
+
+function validateCheckpointPayload(data: unknown): CheckpointV1 {
+  const parsed = ensureObject(data, 'checkpoint');
+  if (parsed['version'] !== 1) {
     throw new Error('unsupported checkpoint version');
   }
-  return parsed;
+  const meta = ensureObject(parsed['meta'], 'meta');
+  ensureString(meta['symbol'], 'meta.symbol');
+  ensureNumber(parsed['createdAtMs'], 'createdAtMs');
+  const cursors = ensureObject(parsed['cursors'], 'cursors');
+  for (const [name, cursor] of Object.entries(cursors)) {
+    if (cursor === undefined || cursor === null) {
+      continue;
+    }
+    validateCursor(name, cursor);
+  }
+  const engine = ensureObject(parsed['engine'], 'engine');
+  ensureArray(engine['openOrderIds'], 'engine.openOrderIds');
+  ensureArray(engine['stopOrderIds'], 'engine.stopOrderIds');
+  ensureObject(parsed['merge'], 'merge');
+  const state = parsed['state'];
+  if (state === undefined || state === null || typeof state !== 'object') {
+    throw new Error('checkpoint is missing required field: state');
+  }
+  return parsed as unknown as CheckpointV1;
+}
+
+export async function loadCheckpoint(path: string): Promise<CheckpointV1> {
+  const raw = await readFile(path, 'utf8');
+  const parsed = JSON.parse(raw) as unknown;
+  return validateCheckpointPayload(parsed);
 }
 
 function createEmptyDepthStream<T>(): AsyncIterable<T> {
