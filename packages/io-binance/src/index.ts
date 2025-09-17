@@ -130,6 +130,14 @@ export async function* createReader(
   }
 }
 
+export { createJsonlCursorReader } from './cursors/jsonl.cursor.js';
+export type {
+  ReaderCursor,
+  CursorIterable,
+  JsonlCursorReaderOptions,
+  JsonlCursorTradesOptions,
+  JsonlCursorDepthOptions,
+} from './cursors/types.js';
 export type {
   Trade,
   DepthDiff,
