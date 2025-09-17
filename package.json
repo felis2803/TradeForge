@@ -13,7 +13,10 @@
     "prepare": "husky install",
     "examples:build": "tsc -p tsconfig.examples.json",
     "examples:lint": "eslint \"examples/**/*.{ts,tsx,js,md}\"",
-    "examples:run": "node --enable-source-maps examples/_shared/bin/run-scenario.ts"
+    "examples:run": "node --enable-source-maps examples/_shared/bin/run-scenario.ts",
+    "examples:ex01": "node dist-examples/01-basic-replay/run.js",
+    "examples:ex01:build": "tsc -p tsconfig.examples.json --incremental",
+    "examples:ex01:smoke": "node examples/01-basic-replay/smoke.ts"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",
