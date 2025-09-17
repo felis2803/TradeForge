@@ -88,6 +88,27 @@ test('loadCheckpoint rejects negative cursor recordIndex', async () => {
   });
 });
 
+test('loadCheckpoint rejects depth cursor when recordIndex is negative', async () => {
+  const base = createCheckpointPayload();
+  base.cursors.trades = { file: 'trades.jsonl', recordIndex: 0 };
+  base.cursors.depth = { file: 'depth.jsonl', recordIndex: -1 };
+  await withCheckpointFile(base, async (filePath) => {
+    await expect(loadCheckpoint(filePath)).rejects.toThrow('recordIndex');
+  });
+});
+
+test('loadCheckpoint rejects cursor when entry is not a string', async () => {
+  const base = createCheckpointPayload();
+  base.cursors.depth = {
+    file: 'depth.jsonl',
+    recordIndex: 0,
+    entry: 42 as unknown as string,
+  };
+  await withCheckpointFile(base, async (filePath) => {
+    await expect(loadCheckpoint(filePath)).rejects.toThrow('entry');
+  });
+});
+
 test('deserializeExchangeState rejects unknown currencies', () => {
   const serialized: SerializedExchangeState = {
     ...createSerializedState(),

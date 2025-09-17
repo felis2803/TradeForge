@@ -614,6 +614,16 @@ function ensureArray(value: unknown, path: string): unknown[] {
   return value;
 }
 
+function ensureStringArray(value: unknown, path: string): string[] {
+  const arr = ensureArray(value, path);
+  return arr.map((entry, index) => {
+    if (typeof entry !== 'string') {
+      throw new Error(`checkpoint ${path}[${index}] must be a string`);
+    }
+    return entry;
+  });
+}
+
 function validateCursor(name: string, value: unknown): void {
   const cursor = ensureObject(value, `cursors.${name}`);
   ensureString(cursor['file'], `cursors.${name}.file`);
@@ -640,7 +650,17 @@ function validateCheckpointPayload(data: unknown): CheckpointV1 {
   }
   const meta = ensureObject(parsed['meta'], 'meta');
   ensureString(meta['symbol'], 'meta.symbol');
-  ensureNumber(parsed['createdAtMs'], 'createdAtMs');
+  const createdAtMs = ensureNumber(parsed['createdAtMs'], 'createdAtMs');
+  if (!Number.isInteger(createdAtMs)) {
+    throw new Error('checkpoint createdAtMs must be an integer');
+  }
+  if (createdAtMs < 0) {
+    throw new Error('checkpoint createdAtMs must be >= 0');
+  }
+  const note = meta['note'];
+  if (note !== undefined && note !== null && typeof note !== 'string') {
+    throw new Error('checkpoint meta.note must be a string');
+  }
   const cursors = ensureObject(parsed['cursors'], 'cursors');
   for (const [name, cursor] of Object.entries(cursors)) {
     if (cursor === undefined || cursor === null) {
@@ -649,13 +669,10 @@ function validateCheckpointPayload(data: unknown): CheckpointV1 {
     validateCursor(name, cursor);
   }
   const engine = ensureObject(parsed['engine'], 'engine');
-  ensureArray(engine['openOrderIds'], 'engine.openOrderIds');
-  ensureArray(engine['stopOrderIds'], 'engine.stopOrderIds');
+  ensureStringArray(engine['openOrderIds'], 'engine.openOrderIds');
+  ensureStringArray(engine['stopOrderIds'], 'engine.stopOrderIds');
   ensureObject(parsed['merge'], 'merge');
-  const state = parsed['state'];
-  if (state === undefined || state === null || typeof state !== 'object') {
-    throw new Error('checkpoint is missing required field: state');
-  }
+  ensureObject(parsed['state'], 'state');
   return parsed as unknown as CheckpointV1;
 }
 
