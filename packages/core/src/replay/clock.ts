@@ -43,7 +43,7 @@ export function createWallClock(): SimClock {
 
 export function createAcceleratedClock(speed: number): SimClock {
   const finiteSpeed = Number.isFinite(speed) ? speed : 1;
-  const normalizedSpeed = finiteSpeed < 0 ? 0 : finiteSpeed;
+  const normalizedSpeed = finiteSpeed <= 0 ? 1 : finiteSpeed;
   const divisor = Math.max(normalizedSpeed, 1e-9);
   return {
     desc(): string {
