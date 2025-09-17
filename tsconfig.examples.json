@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist-examples",
+    "rootDir": "examples",
+    "declaration": false,
+    "paths": {
+      "@tradeforge/core": ["packages/core/dist/index.d.ts"],
+      "@tradeforge/core/*": ["packages/core/dist/*"],
+      "@tradeforge/io-binance": ["packages/io-binance/dist/index.d.ts"],
+      "@tradeforge/io-binance/*": ["packages/io-binance/dist/*"],
+      "examples/*": ["examples/*"]
+    }
+  },
+  "include": ["examples/**/*"]
+}

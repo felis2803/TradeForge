@@ -6,6 +6,13 @@ settings:
 
 importers:
   .:
+    dependencies:
+      '@tradeforge/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@tradeforge/io-binance':
+        specifier: workspace:*
+        version: link:packages/io-binance
     devDependencies:
       '@types/jest':
         specifier: ^29.5.11
@@ -28,6 +35,9 @@ importers:
       eslint-plugin-prettier:
         specifier: ^5.0.0
         version: 5.5.4(eslint-config-prettier@9.1.2(eslint@9.35.0))(eslint@9.35.0)(prettier@3.6.2)
+      fast-glob:
+        specifier: ^3.3.2
+        version: 3.3.3
       husky:
         specifier: ^9.0.0
         version: 9.1.7
