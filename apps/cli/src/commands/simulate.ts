@@ -477,7 +477,10 @@ const debugCheckpointHelpers = process.env['TF_DEBUG_CP']
 export const __debugCheckpoint = debugCheckpointHelpers;
 
 function normalizeFixtureBasename(value: string): string {
-  return value.toLowerCase().endsWith('.zip') ? value.slice(0, -4) : value;
+  const lower = value.toLowerCase();
+  if (lower.endsWith('.zip')) return value.slice(0, -4);
+  if (lower.endsWith('.gz')) return value.slice(0, -3);
+  return value;
 }
 
 export async function simulate(argv: string[]): Promise<void> {
@@ -615,9 +618,8 @@ export async function simulate(argv: string[]): Promise<void> {
     if (checkpoint.meta?.note) {
       summaryParts.push(`note=${checkpoint.meta.note}`);
     }
-    console.log(
-      `loaded checkpoint from ${checkpointLoadPath} (${summaryParts.join(', ')})`,
-    );
+    const summary = summaryParts.join(', ');
+    console.log(`loaded checkpoint from ${checkpointLoadPath} (${summary})`);
   }
   if (checkpoint) {
     const tradeCursorFile = checkpoint.cursors.trades?.file;
