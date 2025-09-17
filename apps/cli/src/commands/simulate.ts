@@ -11,7 +11,8 @@ import {
   createWallClock,
   executeTimeline,
   makeCheckpointV1,
-  runReplayBasic,
+  runReplay,
+  createReplayController,
   toPriceInt,
   toQtyInt,
   type DepthEvent,
@@ -19,7 +20,7 @@ import {
   type MergedEvent,
   type Order,
   type ReplayLimits,
-  type ReplayStats,
+  type ReplayProgress,
   type SimClock,
   type SymbolId,
   type TradeEvent,
@@ -395,7 +396,7 @@ export async function simulate(argv: string[]): Promise<void> {
   const tradeFiles = resolveInputList(args['trades']);
   if (tradeFiles.length === 0) {
     console.error(
-      'usage: tf simulate --trades <files> [--depth <files>] [--symbol BTCUSDT]',
+      'usage: tf simulate --trades <files> [--depth <files>] [--symbol BTCUSDT] [--checkpoint-save <file>] [--pause-on-start]',
     );
     process.exitCode = 1;
     return;
@@ -419,6 +420,18 @@ export async function simulate(argv: string[]): Promise<void> {
   const maxEventsArg = parseNumberArg(args['max-events']);
   const maxSimMsArg = parseNumberArg(args['max-sim-ms']);
   const maxWallMsArg = parseNumberArg(args['max-wall-ms']);
+  const pauseOnStart = parseBool(args['pause-on-start'], false);
+  const checkpointPathArg = args['checkpoint-save'];
+  const cpIntervalEventsArg = parseNumberArg(args['cp-interval-events']);
+  const cpIntervalWallArg = parseNumberArg(args['cp-interval-wall-ms']);
+  const cpIntervalEvents =
+    cpIntervalEventsArg !== undefined && cpIntervalEventsArg > 0
+      ? Math.max(1, Math.floor(cpIntervalEventsArg))
+      : undefined;
+  const cpIntervalWallMs =
+    cpIntervalWallArg !== undefined && cpIntervalWallArg > 0
+      ? cpIntervalWallArg
+      : undefined;
   let clock: SimClock;
   switch (clockMode) {
     case 'wall':
@@ -484,7 +497,10 @@ export async function simulate(argv: string[]): Promise<void> {
   }
 
   const { state, accounts, placed, priceScale, qtyScale } = setupState(symbol);
-  const merged = createMergedStream(tradeReader, depthReader, {
+  const mergeStart: MergeStartState = {
+    nextSourceOnEqualTs: preferDepth ? 'DEPTH' : 'TRADES',
+  };
+  const merged = createMergedStream(tradeReader, depthReader, mergeStart, {
     preferDepthOnEqualTs: preferDepth,
   });
 
@@ -508,16 +524,83 @@ export async function simulate(argv: string[]): Promise<void> {
     }
   })();
 
-  let replayStats: ReplayStats | undefined;
+  const checkpointSavePath =
+    checkpointPathArg && checkpointPathArg.trim()
+      ? resolve(process.cwd(), checkpointPathArg)
+      : undefined;
+
+  let lastProgressEvents = -1;
+  const handleProgress = (progress: ReplayProgress) => {
+    if (checkpointSavePath && progress.eventsOut === lastProgressEvents) {
+      console.log(`checkpoint saved to ${checkpointSavePath}`);
+    }
+    lastProgressEvents = progress.eventsOut;
+  };
+
+  const autoCheckpoint = checkpointSavePath
+    ? {
+        savePath: checkpointSavePath,
+        ...(cpIntervalEvents ? { cpIntervalEvents } : {}),
+        ...(cpIntervalWallMs ? { cpIntervalWallMs } : {}),
+        buildCheckpoint: async () => {
+          const cursors: {
+            trades?: CoreReaderCursor;
+            depth?: CoreReaderCursor;
+          } = {};
+          const tradesCursor = getCursorFromSource(
+            tradeReader as unknown as DebugCursorSource,
+          );
+          if (tradesCursor) {
+            cursors.trades = tradesCursor;
+          }
+          const depthCursor = getCursorFromSource(
+            depthReader as unknown as DebugCursorSource,
+          );
+          if (depthCursor) {
+            cursors.depth = depthCursor;
+          }
+          const mergeForCheckpoint: MergeStartState = {};
+          if (mergeStart.nextSourceOnEqualTs) {
+            mergeForCheckpoint.nextSourceOnEqualTs =
+              mergeStart.nextSourceOnEqualTs;
+          }
+          return makeCheckpointV1({
+            symbol,
+            state,
+            cursors,
+            merge: mergeForCheckpoint,
+          });
+        },
+      }
+    : undefined;
+
+  const controller = pauseOnStart ? createReplayController() : undefined;
+  if (controller && pauseOnStart) {
+    controller.pause();
+    console.log('Press Enter to resume…');
+    if (typeof process.stdin.setEncoding === 'function') {
+      process.stdin.setEncoding('utf8');
+    }
+    process.stdin.resume();
+    process.stdin.once('data', () => {
+      controller.resume();
+      process.stdin.pause();
+    });
+  }
+
+  let replayStats: ReplayProgress | undefined;
   let replayError: unknown;
   try {
-    replayStats = await runReplayBasic({
+    replayStats = await runReplay({
       timeline: merged,
       clock,
       ...(replayLimits ? { limits: replayLimits } : {}),
+      ...(controller ? { controller } : {}),
       onEvent: (event) => {
         eventQueue.push(event);
       },
+      onProgress: handleProgress,
+      ...(autoCheckpoint ? { autoCp: autoCheckpoint } : {}),
     });
   } catch (err) {
     replayError = err;
