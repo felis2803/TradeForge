@@ -476,6 +476,10 @@ const debugCheckpointHelpers = process.env['TF_DEBUG_CP']
 
 export const __debugCheckpoint = debugCheckpointHelpers;
 
+function normalizeFixtureBasename(value: string): string {
+  return value.toLowerCase().endsWith('.zip') ? value.slice(0, -4) : value;
+}
+
 export async function simulate(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
   const wantsHelp = parseBool(args['help'], false);
@@ -543,6 +547,15 @@ export async function simulate(argv: string[]): Promise<void> {
       return;
     }
   }
+  if (checkpoint && checkpoint.version !== 1) {
+    const version = checkpoint.version;
+    const source = checkpointLoadPath ? ` from ${checkpointLoadPath}` : '';
+    console.error(
+      `unsupported checkpoint version${source}; expected version 1 but received ${version}`,
+    );
+    process.exitCode = 1;
+    return;
+  }
   const tradeFiles = resolveInputList(args['trades']);
   const depthFiles = resolveInputList(args['depth']);
   let symbol = (args['symbol'] ?? 'BTCUSDT') as SymbolId;
@@ -585,13 +598,74 @@ export async function simulate(argv: string[]): Promise<void> {
   }
   if (checkpoint && checkpointLoadPath) {
     const nextSource = checkpoint.merge?.nextSourceOnEqualTs ?? 'auto';
+    const tradeCursorBase = checkpoint.cursors.trades
+      ? basename(checkpoint.cursors.trades.file)
+      : 'none';
+    const depthCursorBase = checkpoint.cursors.depth
+      ? basename(checkpoint.cursors.depth.file)
+      : 'none';
+    const summaryParts = [
+      `version=${checkpoint.version}`,
+      `createdAt=${new Date(checkpoint.createdAtMs).toISOString()}`,
+      `symbol=${checkpoint.meta.symbol}`,
+      `tradesCursor=${tradeCursorBase}`,
+      `depthCursor=${depthCursorBase}`,
+      `nextSourceOnEqualTs=${nextSource}`,
+    ];
+    if (checkpoint.meta?.note) {
+      summaryParts.push(`note=${checkpoint.meta.note}`);
+    }
     console.log(
-      `loaded checkpoint from ${checkpointLoadPath} (symbol=${
-        checkpoint.meta.symbol
-      }, tradesCursor=${checkpoint.cursors.trades ? 'yes' : 'no'}, depthCursor=${
-        checkpoint.cursors.depth ? 'yes' : 'no'
-      }, nextSourceOnEqualTs=${nextSource})`,
+      `loaded checkpoint from ${checkpointLoadPath} (${summaryParts.join(', ')})`,
     );
+  }
+  if (checkpoint) {
+    const tradeCursorFile = checkpoint.cursors.trades?.file;
+    if (tradeCursorFile && tradeFiles.length > 0) {
+      const expected = basename(tradeCursorFile);
+      const expectedNormalized = normalizeFixtureBasename(expected);
+      const tradeBasenamesSet = new Set<string>();
+      for (const file of tradeFiles) {
+        const base = basename(file);
+        tradeBasenamesSet.add(base);
+        const normalized = normalizeFixtureBasename(base);
+        tradeBasenamesSet.add(normalized);
+      }
+      const tradeBasenames = Array.from(tradeBasenamesSet);
+      if (
+        !tradeBasenamesSet.has(expected) &&
+        !tradeBasenamesSet.has(expectedNormalized)
+      ) {
+        console.warn(
+          `checkpoint trades cursor references ${expected} but provided --trades inputs are ${
+            tradeBasenames.join(', ') || 'none'
+          }; simulation may not resume correctly`,
+        );
+      }
+    }
+    const depthCursorFile = checkpoint.cursors.depth?.file;
+    if (depthCursorFile && depthFiles.length > 0) {
+      const expected = basename(depthCursorFile);
+      const expectedNormalized = normalizeFixtureBasename(expected);
+      const depthBasenamesSet = new Set<string>();
+      for (const file of depthFiles) {
+        const base = basename(file);
+        depthBasenamesSet.add(base);
+        const normalized = normalizeFixtureBasename(base);
+        depthBasenamesSet.add(normalized);
+      }
+      const depthBasenames = Array.from(depthBasenamesSet);
+      if (
+        !depthBasenamesSet.has(expected) &&
+        !depthBasenamesSet.has(expectedNormalized)
+      ) {
+        console.warn(
+          `checkpoint depth cursor references ${expected} but provided --depth inputs are ${
+            depthBasenames.join(', ') || 'none'
+          }; simulation may not resume correctly`,
+        );
+      }
+    }
   }
   const limit = args['limit'] ? Number(args['limit']) : undefined;
   const fromMs = parseTime(args['from']);
@@ -792,9 +866,15 @@ export async function simulate(argv: string[]): Promise<void> {
       : undefined;
 
   let lastProgressEvents = -1;
+  let pendingCheckpointLogEvents: number | null = null;
   const handleProgress = (progress: ReplayProgress) => {
-    if (checkpointSavePath && progress.eventsOut === lastProgressEvents) {
-      console.log(`checkpoint saved to ${checkpointSavePath}`);
+    if (checkpointSavePath && pendingCheckpointLogEvents !== null) {
+      if (progress.eventsOut === pendingCheckpointLogEvents) {
+        console.log(`checkpoint saved to ${checkpointSavePath}`);
+        pendingCheckpointLogEvents = null;
+      } else if (progress.eventsOut > pendingCheckpointLogEvents) {
+        pendingCheckpointLogEvents = null;
+      }
     }
     lastProgressEvents = progress.eventsOut;
   };
@@ -826,6 +906,7 @@ export async function simulate(argv: string[]): Promise<void> {
             mergeForCheckpoint.nextSourceOnEqualTs =
               mergeStart.nextSourceOnEqualTs;
           }
+          pendingCheckpointLogEvents = Math.max(lastProgressEvents, 0);
           return makeCheckpointV1({
             symbol,
             state,
@@ -837,17 +918,47 @@ export async function simulate(argv: string[]): Promise<void> {
     : undefined;
 
   const controller = pauseOnStart ? createReplayController() : undefined;
+  let cleanupStdin: (() => void) | undefined;
   if (controller && pauseOnStart) {
     controller.pause();
     console.log('Press Enter to resume…');
-    if (typeof process.stdin.setEncoding === 'function') {
-      process.stdin.setEncoding('utf8');
+    const stdin = process.stdin;
+    if (typeof stdin.setEncoding === 'function') {
+      stdin.setEncoding('utf8');
     }
-    process.stdin.resume();
-    process.stdin.once('data', () => {
+    const setRawMode =
+      typeof stdin.setRawMode === 'function'
+        ? stdin.setRawMode.bind(stdin)
+        : undefined;
+    let cleaned = false;
+    let cleanup = () => {
+      /* noop */
+    };
+    const onResume = () => {
       controller.resume();
-      process.stdin.pause();
-    });
+      cleanup();
+      cleanupStdin = undefined;
+    };
+    cleanup = () => {
+      if (cleaned) {
+        return;
+      }
+      cleaned = true;
+      setRawMode?.(false);
+      stdin.pause();
+      if (typeof stdin.off === 'function') {
+        stdin.off('data', onResume);
+      } else {
+        stdin.removeListener('data', onResume);
+      }
+    };
+    cleanupStdin = () => {
+      cleanup();
+      cleanupStdin = undefined;
+    };
+    setRawMode?.(true);
+    stdin.once('data', onResume);
+    stdin.resume();
   }
 
   let replayStats: ReplayProgress | undefined;
@@ -876,6 +987,10 @@ export async function simulate(argv: string[]): Promise<void> {
     if (!replayError) {
       replayError = err;
     }
+  }
+
+  if (cleanupStdin) {
+    cleanupStdin();
   }
 
   if (replayError) {
