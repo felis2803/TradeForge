@@ -590,6 +590,14 @@ function ensureString(value: unknown, path: string): string {
   return value;
 }
 
+function ensureNonEmptyString(value: unknown, path: string): string {
+  const str = ensureString(value, path);
+  if (str.trim().length === 0) {
+    throw new Error(`checkpoint ${path} must be a non-empty string`);
+  }
+  return str;
+}
+
 function ensureNumber(value: unknown, path: string): number {
   if (value === undefined || value === null) {
     throw new Error(`checkpoint is missing required field: ${path}`);
@@ -626,7 +634,7 @@ function ensureStringArray(value: unknown, path: string): string[] {
 
 function validateCursor(name: string, value: unknown): void {
   const cursor = ensureObject(value, `cursors.${name}`);
-  ensureString(cursor['file'], `cursors.${name}.file`);
+  ensureNonEmptyString(cursor['file'], `cursors.${name}.file`);
   const entry = cursor['entry'];
   if (entry !== undefined && typeof entry !== 'string') {
     throw new Error(`checkpoint cursors.${name}.entry must be a string`);
@@ -649,7 +657,7 @@ function validateCheckpointPayload(data: unknown): CheckpointV1 {
     throw new Error('unsupported checkpoint version');
   }
   const meta = ensureObject(parsed['meta'], 'meta');
-  ensureString(meta['symbol'], 'meta.symbol');
+  ensureNonEmptyString(meta['symbol'], 'meta.symbol');
   const createdAtMs = ensureNumber(parsed['createdAtMs'], 'createdAtMs');
   if (!Number.isInteger(createdAtMs)) {
     throw new Error('checkpoint createdAtMs must be an integer');

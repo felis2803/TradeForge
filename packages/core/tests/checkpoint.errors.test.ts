@@ -67,6 +67,16 @@ test('loadCheckpoint rejects unsupported version', async () => {
   });
 });
 
+test('loadCheckpoint rejects non-integer createdAtMs', async () => {
+  const base = createCheckpointPayload();
+  base.createdAtMs = 1.23;
+  await withCheckpointFile(base, async (filePath) => {
+    await expect(loadCheckpoint(filePath)).rejects.toThrow(
+      'checkpoint createdAtMs must be an integer',
+    );
+  });
+});
+
 test('loadCheckpoint requires state field to be present', async () => {
   const base = createCheckpointPayload();
   const invalid = { ...base } as Record<string, unknown>;
@@ -106,6 +116,14 @@ test('loadCheckpoint rejects cursor when entry is not a string', async () => {
   };
   await withCheckpointFile(base, async (filePath) => {
     await expect(loadCheckpoint(filePath)).rejects.toThrow('entry');
+  });
+});
+
+test('loadCheckpoint rejects cursor with empty file name', async () => {
+  const base = createCheckpointPayload();
+  base.cursors.trades = { file: '', recordIndex: 0 };
+  await withCheckpointFile(base, async (filePath) => {
+    await expect(loadCheckpoint(filePath)).rejects.toThrow(/non-empty/);
   });
 });
 
