@@ -4,7 +4,7 @@ import prettierPlugin from 'eslint-plugin-prettier';
 
 export default [
   {
-    ignores: ['dist', '**/dist/**', 'node_modules', 'coverage'],
+    ignores: ['dist', '**/dist/**', 'node_modules', 'coverage', '**/*.md'],
   },
   {
     files: ['**/*.ts'],
@@ -22,6 +22,12 @@ export default [
     rules: {
       ...tsPlugin.configs.recommended.rules,
       'prettier/prettier': 'error',
+    },
+  },
+  {
+    files: ['examples/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
 ];
