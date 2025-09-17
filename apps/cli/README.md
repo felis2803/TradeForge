@@ -35,6 +35,49 @@ pnpm --filter @tradeforge/cli exec -- tf --version
 
    Для корректного реплея нужно передать те же файлы, что использовались при сохранении (JSONL обеспечивает гарантированные курсоры, см. ниже).
 
+   Пример фрагмента `--summary` (значения сериализованы строками фиксированной точки, scale указан в блоке `config`):
+
+   ```json
+   {
+     "totals": {
+       "orders": {
+         "total": 1,
+         "filled": 1,
+         "partiallyFilled": 0,
+         "canceled": 0
+       },
+       "fills": 1,
+       "executedQty": "400000",
+       "notional": "400000400",
+       "fees": { "maker": "400000", "taker": "0" }
+     },
+     "orders": [
+       {
+         "id": "O1",
+         "side": "BUY",
+         "status": "FILLED",
+         "qty": "400000",
+         "executedQty": "400000",
+         "cumulativeQuote": "400000400",
+         "fees": { "maker": "400000" },
+         "fills": 1
+       }
+     ],
+     "balances": {
+       "A1": {
+         "USDT": { "free": "9599599600", "locked": "0" },
+         "BTC": { "free": "400000", "locked": "0" }
+       }
+     },
+     "config": {
+       "symbol": "BTCUSDT",
+       "priceScale": 5,
+       "qtyScale": 6,
+       "ordersSeeded": []
+     }
+   }
+   ```
+
 ## Supported formats
 
 - Симулятор читает CSV, JSON и JSONL (`*.jsonl`, `*.jsonl.gz`, `*.jsonl.zip`).
@@ -78,6 +121,37 @@ pnpm --filter @tradeforge/cli exec -- tf --version
 
 - `--ndjson` — печатать каждый отчёт исполнения (execution report) отдельной строкой в формате NDJSON.
 - `--summary` / `--no-summary` — включает/выключает финальный агрегированный отчёт (по умолчанию печатается).
+
+#### Summary/NDJSON вывод
+
+`--summary` формирует агрегированный JSON: блок `totals` содержит счётчики событий и суммарные величины (сериализованы строками, чтобы сохранить точность `bigint`), `orders` — итоговое состояние ордеров, `balances` — снапшот балансов счётов. В `config` возвращаются параметры шкалы (`priceScale`, `qtyScale`), которые помогут преобразовать строки обратно в десятичные значения.
+
+`--ndjson` выводит поток `ExecutionReport` в формате NDJSON и не мешает финальному summary. Каждая строка — отдельный отчёт, готовый для стриминга или дальнейшей обработки через `jq`/Logstash. Пример строки с событием fill:
+
+```json
+{
+  "ts": 1577836800000,
+  "kind": "FILL",
+  "orderId": "O1",
+  "fill": {
+    "ts": 1577836800000,
+    "orderId": "O1",
+    "price": "1000001000",
+    "qty": "400000",
+    "side": "BUY",
+    "liquidity": "MAKER",
+    "sourceAggressor": "BUY",
+    "tradeRef": "1"
+  },
+  "patch": {
+    "status": "FILLED",
+    "executedQty": "400000",
+    "cumulativeQuote": "400000400",
+    "fees": { "maker": "400000" },
+    "tsUpdated": 3
+  }
+}
+```
 
 ### Работа с чекпоинтами
 

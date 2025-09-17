@@ -107,6 +107,35 @@ curl -X POST http://localhost:3000/v1/orders \
 # }
 ```
 
+Числовые значения — строки (fixed-point). Поля и точный формат зависят от текущей версии API.
+
+```json
+{
+  "id": "O1",
+  "tsCreated": 1,
+  "tsUpdated": 1,
+  "symbol": "BTCUSDT",
+  "type": "LIMIT",
+  "side": "BUY",
+  "tif": "GTC",
+  "qty": "10000",
+  "status": "OPEN",
+  "accountId": "A1",
+  "executedQty": "0",
+  "cumulativeQuote": "0",
+  "fees": {},
+  "fills": [],
+  "price": "2500000000",
+  "reserved": {
+    "currency": "USDT",
+    "total": "25012500",
+    "remaining": "25012500"
+  }
+}
+```
+
+`tsCreated`/`tsUpdated` — миллисекунды Unix (в чистом запуске используются логические тики, при живых данных будут значения из таймлайна).
+
 ```bash
 curl -i -X POST http://localhost:3000/v1/orders \
   -H 'Content-Type: application/json' \
