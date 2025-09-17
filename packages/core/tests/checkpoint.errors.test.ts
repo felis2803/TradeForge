@@ -52,7 +52,9 @@ async function withCheckpointFile(
   const dir = await mkdtemp(join(tmpdir(), 'tf-core-checkpoint-errors-'));
   const filePath = join(dir, 'checkpoint.json');
   try {
-    await writeFile(filePath, JSON.stringify(payload), 'utf8');
+    const data =
+      typeof payload === 'string' ? payload : JSON.stringify(payload);
+    await writeFile(filePath, data, 'utf8');
     await run(filePath);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -83,6 +85,61 @@ test('loadCheckpoint rejects negative createdAtMs', async () => {
   await withCheckpointFile(base, async (filePath) => {
     await expect(loadCheckpoint(filePath)).rejects.toThrow(
       'checkpoint createdAtMs must be a non-negative integer',
+    );
+  });
+});
+
+test('loadCheckpoint rejects string createdAtMs', async () => {
+  const payload = {
+    ...createCheckpointPayload(),
+    createdAtMs: '123',
+  } as unknown;
+  await withCheckpointFile(payload, async (filePath) => {
+    await expect(loadCheckpoint(filePath)).rejects.toThrow(
+      'checkpoint createdAtMs must be a finite number',
+    );
+  });
+});
+
+test('loadCheckpoint rejects NaN createdAtMs', async () => {
+  const payload = {
+    ...createCheckpointPayload(),
+    createdAtMs: Number.NaN,
+  };
+  const originalParse = JSON.parse;
+  const parseSpy = jest.spyOn(JSON, 'parse');
+  parseSpy.mockImplementation(
+    (text: string, reviver?: Parameters<typeof JSON.parse>[1]) => {
+      const parsed = originalParse(text, reviver);
+      if (parsed && typeof parsed === 'object' && 'createdAtMs' in parsed) {
+        const record = parsed as Record<string, unknown>;
+        if (record['createdAtMs'] === null) {
+          record['createdAtMs'] = Number.NaN;
+        }
+      }
+      return parsed;
+    },
+  );
+  try {
+    await withCheckpointFile(payload, async (filePath) => {
+      await expect(loadCheckpoint(filePath)).rejects.toThrow(
+        'checkpoint createdAtMs must be a finite number',
+      );
+    });
+  } finally {
+    parseSpy.mockRestore();
+  }
+});
+
+test('loadCheckpoint rejects Infinity createdAtMs', async () => {
+  const base = createCheckpointPayload();
+  const jsonWithInfinity = JSON.stringify(base).replace(
+    '"createdAtMs":0',
+    '"createdAtMs": 1e309',
+  );
+  await withCheckpointFile(jsonWithInfinity, async (filePath) => {
+    await expect(loadCheckpoint(filePath)).rejects.toThrow(
+      'checkpoint createdAtMs must be a finite number',
     );
   });
 });

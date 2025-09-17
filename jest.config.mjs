@@ -15,7 +15,7 @@ export default {
       { useESM: true, tsconfig: resolve('tsconfig.base.json') },
     ],
   },
-  testMatch: ['**/tests/**/*.test.ts'],
+  testMatch: ['**/tests/**/*.test.ts', '**/__tests__/**/*.test.ts'],
   collectCoverage: true,
   coverageProvider: 'v8',
 };
