@@ -78,6 +78,11 @@ pnpm --filter @tradeforge/cli exec -- tf --version
    }
    ```
 
+   Ключевые поля в агрегированной сводке:
+   - `eventsProcessed` — число обработанных событий;
+   - `fills` — количество исполненных сделок по ордерам пользователя;
+   - `totalFees` — суммарные комиссии (строка).
+
 ## Supported formats
 
 - Симулятор читает CSV, JSON и JSONL (`*.jsonl`, `*.jsonl.gz`, `*.jsonl.zip`).
