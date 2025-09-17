@@ -27,22 +27,26 @@ import { createLogger, formatProgress } from '../_shared/logging.js';
 
 const logger = createLogger({ prefix: '[examples/01-basic-replay]' });
 
-function parseList(value: string | undefined, fallback: string[]): string[] {
-  if (!value) {
-    return fallback;
-  }
-  const parts = value
-    .split(/[\n,]/)
+function splitFilesEnv(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(/[\s,:]+/g)
     .map((part) => part.trim())
     .filter(Boolean);
-  if (parts.length === 0) {
-    return fallback;
-  }
-  return parts;
 }
 
 function ensureAbsolute(files: string[]): string[] {
   return files.map((file) => resolve(file));
+}
+
+function resolveFileList(
+  envValue: string | undefined,
+  fallback: string,
+): string[] {
+  const entries = splitFilesEnv(envValue);
+  if (entries.length === 0) {
+    return [resolve(fallback)];
+  }
+  return ensureAbsolute(entries);
 }
 
 function getEntry(cursor: ReaderCursor): string | undefined {
@@ -160,11 +164,12 @@ function buildClock(clock: ClockKind): ParsedClock {
 }
 
 function parseTieBreak(value: string | undefined): 'DEPTH' | 'TRADES' {
-  const normalized = value?.trim().toUpperCase();
-  if (normalized === 'TRADES') {
-    return 'TRADES';
+  const normalized = value ? value.trim().toUpperCase() : 'DEPTH';
+  const tieBreak = normalized.length > 0 ? normalized : 'DEPTH';
+  if (tieBreak !== 'DEPTH' && tieBreak !== 'TRADES') {
+    throw new Error(`TF_TIE_BREAK must be DEPTH or TRADES, got: ${tieBreak}`);
   }
-  return 'DEPTH';
+  return tieBreak;
 }
 
 function parseMaxEvents(value: string | undefined): number {
@@ -217,13 +222,15 @@ function formatLimits(limits: ReplayLimits): string {
 }
 
 function defaultFileList(): { trades: string[]; depth: string[] } {
-  const trades = parseList(process.env['TF_TRADES_FILES'], [
+  const trades = resolveFileList(
+    process.env['TF_TRADES_FILES'],
     'examples/_smoke/mini-trades.jsonl',
-  ]);
-  const depth = parseList(process.env['TF_DEPTH_FILES'], [
+  );
+  const depth = resolveFileList(
+    process.env['TF_DEPTH_FILES'],
     'examples/_smoke/mini-depth.jsonl',
-  ]);
-  return { trades: ensureAbsolute(trades), depth: ensureAbsolute(depth) };
+  );
+  return { trades, depth };
 }
 
 export async function run(): Promise<ReplayProgress> {
@@ -272,17 +279,18 @@ async function main(): Promise<void> {
   try {
     const progress = await run();
     const wallMs = Math.max(0, progress.wallLastMs - progress.wallStartMs);
-    const simMs =
-      progress.simStartTs !== undefined && progress.simLastTs !== undefined
-        ? Math.max(0, Number(progress.simLastTs) - Number(progress.simStartTs))
-        : undefined;
-    const marker: Record<string, number> & { simMs?: number } = {
+    let simMs = 0;
+    if (
+      typeof progress.simStartTs === 'number' &&
+      typeof progress.simLastTs === 'number'
+    ) {
+      simMs = Math.max(0, progress.simLastTs - progress.simStartTs);
+    }
+    const marker = {
       eventsOut: progress.eventsOut,
       wallMs,
+      simMs,
     };
-    if (simMs !== undefined) {
-      marker.simMs = simMs;
-    }
     console.log('BASIC_REPLAY_OK', marker);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

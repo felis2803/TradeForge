@@ -20,6 +20,8 @@
    export TF_DEPTH_FILES="examples/_smoke/mini-depth.jsonl"
    ```
 
+   Списки файлов в `TF_TRADES_FILES`/`TF_DEPTH_FILES` можно разделять запятыми, пробелами или двоеточиями.
+
 2. Запускаем симуляцию через CLI (логические часы, 200 событий, краткий summary):
 
    ```bash
