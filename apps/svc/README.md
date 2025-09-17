@@ -107,6 +107,25 @@ curl -X POST http://localhost:3000/v1/orders \
 # }
 ```
 
+При нарушении валидации сервер вернёт `HTTP/1.1 400 Bad Request`. Например, если для `LIMIT` не передать `price`:
+
+```bash
+curl -i -X POST http://localhost:3000/v1/orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "accountId": "a1",
+    "symbol": "BTCUSDT",
+    "type": "LIMIT",
+    "side": "BUY",
+    "qty": "0.01"
+  }'
+# HTTP/1.1 400 Bad Request
+```
+
+```json
+{ "message": "price is required for LIMIT" }
+```
+
 Числовые значения — строки (fixed-point). Поля и точный формат зависят от текущей версии API.
 
 ```json
@@ -135,20 +154,6 @@ curl -X POST http://localhost:3000/v1/orders \
 ```
 
 `tsCreated`/`tsUpdated` — миллисекунды Unix (в чистом запуске используются логические тики, при живых данных будут значения из таймлайна).
-
-```bash
-curl -i -X POST http://localhost:3000/v1/orders \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "accountId": "a1",
-    "symbol": "BTCUSDT",
-    "type": "LIMIT",
-    "side": "BUY",
-    "qty": "0.01"
-  }'
-# HTTP/1.1 400 Bad Request
-# {"message":"price is required for LIMIT"}
-```
 
 #### STOP_LIMIT / STOP_MARKET
 

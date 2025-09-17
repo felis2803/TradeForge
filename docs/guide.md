@@ -21,6 +21,8 @@ flowchart LR
   D --> G[CLI/REST outputs (summary/NDJSON, responses)]
 ```
 
+Диаграмма отражает conservative execution model (MVP-1), где исполнение идёт только по TRADES. В будущих версиях появится режим full-conformance, учитывающий влияние ордеров на поток и глубину ордербука.
+
 - **Binance historical files** — исходные сделки и стаканы Binance (обычно `*.jsonl`), которые выступают единым источником правды.
 - **Readers** — адаптеры `@tradeforge/io-binance`, формирующие восстановимые JSONL-стримы с курсорами.
 - **Deterministic merge** — объединитель событий `createMergedStream`, решающий конфликты по типу и тай-брейку.
