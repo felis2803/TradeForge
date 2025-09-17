@@ -482,6 +482,53 @@ function normalizeFixtureBasename(value: string): string {
 
 export async function simulate(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
+  const wantsHelp = parseBool(args['help'], false);
+  if (wantsHelp) {
+    const helpText = [
+      'TradeForge simulator — командный запуск симуляции.',
+      '',
+      'Usage:',
+      '  tf simulate --trades <path>[,<path>...] [options]',
+      '',
+      'Data sources:',
+      '  --trades <files>           Список файлов со сделками. Поддерживаются JSON/CSV/JSONL.',
+      '  --depth <files>            Необязательные файлы со стаканом (для тай-брейка).',
+      '  --symbol <symbol>          Торговый инструмент (по умолчанию BTCUSDT).',
+      '  --format-trades <fmt>      Явный формат: auto|csv|json|jsonl.',
+      '  --format-depth <fmt>       Явный формат для стакана.',
+      '  --from / --to <ts>         Ограничение диапазона (Unix ms или ISO-строка).',
+      '  --limit <n>                Ограничить число распечатанных отчётов при --ndjson.',
+      '',
+      'Execution control:',
+      '  --clock <logical|wall|accel>  Режим часов. accel использует --speed (>=1).',
+      '  --speed <factor>              Множитель ускоренных часов (по умолчанию 10).',
+      '  --max-events <n>              Остановить после N событий.',
+      '  --max-sim-ms <ms>             Ограничение по виртуальному времени.',
+      '  --max-wall-ms <ms>            Ограничение по wall-clock времени.',
+      '  --pause-on-start              Запустить в паузе, возобновление по Enter.',
+      '  --prefer-depth-on-equal-ts    Выбрать источник для тай-брейка (по умолчанию DEPTH).',
+      '  --treat-limit-as-maker        Консервативный режим: считать лимитные заявки мейкером.',
+      '  --strict-conservative         Полностью отключить агрессивное исполнение.',
+      '  --use-aggressor-liquidity     Разрешить использовать ликвидность агрессора.',
+      '',
+      'Output:',
+      '  --ndjson                      Печатать execution reports построчно (NDJSON).',
+      '  --summary / --no-summary      Управлять финальным агрегированным отчётом.',
+      '',
+      'Checkpoints:',
+      '  --checkpoint-save <file>      Путь для автосохранения Checkpoint v1 во время реплея.',
+      '  --cp-interval-events <n>      Интервал автосейва по событиям (0 = выкл).',
+      '  --cp-interval-wall-ms <ms>    Интервал автосейва по wall-времени в миллисекундах (0 = выкл).',
+      '  --checkpoint-load <file>      Загрузить Checkpoint v1 и продолжить реплей (нужны те же входные файлы).',
+      '',
+      'Examples:',
+      '  tf simulate --trades trades.jsonl --depth depth.jsonl',
+      '  tf simulate --trades trades.jsonl --checkpoint-save state.json --cp-interval-events 10000',
+      '  tf simulate --checkpoint-load state.json --trades trades.jsonl --depth depth.jsonl',
+    ].join('\n');
+    console.log(helpText);
+    return;
+  }
   const checkpointLoadRaw = args['checkpoint-load'];
   const checkpointLoadPath =
     checkpointLoadRaw && checkpointLoadRaw.trim()
