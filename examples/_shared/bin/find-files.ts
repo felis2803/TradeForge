@@ -75,13 +75,15 @@ function matchesKind(file: string, kind?: 'trades' | 'depth'): boolean {
 async function run(): Promise<void> {
   try {
     const { patterns, options } = parseArgs(process.argv.slice(2));
-    const files = await fg(patterns, {
+    const files = (await fg(patterns, {
       cwd: options.cwd,
       dot: false,
       onlyFiles: true,
       absolute: true,
-    });
-    const filtered = files.filter((file) => matchesKind(file, options.kind));
+    })) as string[];
+    const filtered = files.filter((file: string) =>
+      matchesKind(file, options.kind),
+    );
     const sorted = [...new Set(filtered)].sort();
     for (const file of sorted) {
       const output = options.relative
