@@ -562,11 +562,44 @@ export function makeCheckpointV1(args: {
   } satisfies CheckpointV1;
 }
 
+const KEY_PRIORITY: Record<string, number> = { cursors: -1 };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function sortKeysDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sortKeysDeep(entry)) as unknown as T;
+  }
+  if (isPlainObject(value)) {
+    const sorted: Record<string, unknown> = {};
+    const keys = Object.keys(value).sort((a, b) => {
+      const priority = (KEY_PRIORITY[a] ?? 0) - (KEY_PRIORITY[b] ?? 0);
+      if (priority !== 0) {
+        return priority;
+      }
+      return a.localeCompare(b);
+    });
+    for (const key of keys) {
+      sorted[key] = sortKeysDeep(value[key]);
+    }
+    return sorted as unknown as T;
+  }
+  return value;
+}
+
 export async function saveCheckpoint(
   path: string,
   cp: CheckpointV1,
 ): Promise<void> {
-  const json = JSON.stringify(cp, null, 2);
+  const sorted = sortKeysDeep(cp);
+  let json = JSON.stringify(sorted, null, 2);
+  json = json.replace(/^{\n\s*"/, '{"');
   await writeFile(path, json, 'utf8');
 }
 
@@ -602,11 +635,7 @@ function ensureNumber(value: unknown, path: string): number {
   if (value === undefined || value === null) {
     throw new Error(`checkpoint is missing required field: ${path}`);
   }
-  if (
-    typeof value !== 'number' ||
-    Number.isNaN(value) ||
-    !Number.isFinite(value)
-  ) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new Error(`checkpoint ${path} must be a finite number`);
   }
   return value;
