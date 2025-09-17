@@ -9,6 +9,26 @@
 
 Компоненты связаны минимальным числом зависимостей: CLI и сервис подключают `core` напрямую и опционально используют `io-binance` для чтения исторических данных.
 
+## Поток данных симуляции
+
+```mermaid
+flowchart LR
+  A[Binance historical files (trades, depth)] --> B[Readers (JSONL cursor)]
+  B --> C[Deterministic merge (k-way, tie-break)]
+  C --> D[Engine (orders, fees, STOP, maker/taker)]
+  D --> E[ExchangeState (balances, orders)]
+  E --> F[Checkpoint v1 (state+engine+cursors)]
+  D --> G[CLI/REST outputs (summary/NDJSON, responses)]
+```
+
+- **Binance historical files** — исходные сделки и стаканы Binance (обычно `*.jsonl`), которые выступают единым источником правды.
+- **Readers** — адаптеры `@tradeforge/io-binance`, формирующие восстановимые JSONL-стримы с курсорами.
+- **Deterministic merge** — объединитель событий `createMergedStream`, решающий конфликты по типу и тай-брейку.
+- **Engine** — движок `@tradeforge/core`, который матчит ордера, рассчитывает комиссии и исполняет STOP-логики.
+- **ExchangeState** — хранилище балансов, ордеров и сервисных структур, обновляемое движком.
+- **Checkpoint v1** — снимок состояния и курсоров, позволяющий возобновить прогон с того же места.
+- **CLI/REST outputs** — отчёты `tf simulate` (`--summary`/`--ndjson`) и ответы REST-сервиса, построенные на данных движка.
+
 ## Консервативная модель исполнения
 
 MVP-1 придерживается консервативного подхода: симулятор матчит ордера **только** по фактическим сделкам (`TradeEvent`). Данные стакана (`DepthDiff`) используются для тай-брейков и контроля последовательности, но не создают дополнительной ликвидности.
