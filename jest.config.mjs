@@ -7,6 +7,7 @@ export default {
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@tradeforge/core$': '<rootDir>/packages/core/src/index.ts',
+    '^@tradeforge/io-binance$': '<rootDir>/packages/io-binance/src/index.ts',
   },
   transform: {
     '^.+\\.ts$': [

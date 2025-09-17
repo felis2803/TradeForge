@@ -1,5 +1,5 @@
 /* eslint-disable */
-import { createReader } from '@tradeforge/io-binance';
+import { createJsonlCursorReader, createReader } from '@tradeforge/io-binance';
 import {
   AccountsService,
   ExchangeState,
@@ -10,6 +10,9 @@ import {
   createMergedStream,
   createWallClock,
   executeTimeline,
+  loadCheckpoint,
+  deserializeExchangeState,
+  restoreEngineFromSnapshot,
   makeCheckpointV1,
   runReplay,
   createReplayController,
@@ -24,12 +27,14 @@ import {
   type SimClock,
   type SymbolId,
   type TradeEvent,
+  type Trade,
+  type DepthDiff,
   type CheckpointV1,
   type CoreReaderCursor,
   type MergeStartState,
 } from '@tradeforge/core';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, basename } from 'path';
 import { materializeFixturePath } from '../utils/materializeFixtures.js';
 
 function stringify(value: unknown, space?: number) {
@@ -189,11 +194,91 @@ function createAsyncEventQueue<T>(): AsyncEventQueue<T> {
   };
 }
 
-function createEmptyStream(): AsyncIterable<DepthEvent> {
+function createEmptyStream<T>(): AsyncIterable<T> {
   return {
     async *[Symbol.asyncIterator]() {
       return;
     },
+  };
+}
+
+function createTradeEventStreamFromCursor(
+  source: AsyncIterable<Trade> & { currentCursor?: () => unknown },
+): AsyncIterable<TradeEvent> & { currentCursor: () => CoreReaderCursor } {
+  if (typeof source.currentCursor !== 'function') {
+    throw new Error('trade cursor source must expose currentCursor');
+  }
+  const getCursor = source.currentCursor.bind(source);
+  return {
+    currentCursor(): CoreReaderCursor {
+      return normalizeCursorValue(getCursor());
+    },
+    async *[Symbol.asyncIterator](): AsyncIterator<TradeEvent> {
+      let currentKey: string | undefined;
+      let seq = 0;
+      for await (const payload of source) {
+        const cursor = normalizeCursorValue(getCursor());
+        const entry = cursor.entry ?? basename(cursor.file);
+        const key = `${cursor.file}::${cursor.entry ?? ''}`;
+        if (key !== currentKey) {
+          currentKey = key;
+          seq = 0;
+        }
+        const event: TradeEvent = {
+          kind: 'trade',
+          ts: payload.ts,
+          payload,
+          source: 'TRADES',
+          seq: seq++,
+        };
+        if (entry) {
+          event.entry = entry;
+        }
+        yield event;
+      }
+    },
+  } satisfies AsyncIterable<TradeEvent> & {
+    currentCursor: () => CoreReaderCursor;
+  };
+}
+
+function createDepthEventStreamFromCursor(
+  source: AsyncIterable<DepthDiff> & { currentCursor?: () => unknown },
+): AsyncIterable<DepthEvent> & { currentCursor: () => CoreReaderCursor } {
+  if (typeof source.currentCursor !== 'function') {
+    throw new Error('depth cursor source must expose currentCursor');
+  }
+  const getCursor = source.currentCursor.bind(source);
+  return {
+    currentCursor(): CoreReaderCursor {
+      return normalizeCursorValue(getCursor());
+    },
+    async *[Symbol.asyncIterator](): AsyncIterator<DepthEvent> {
+      let currentKey: string | undefined;
+      let seq = 0;
+      for await (const payload of source) {
+        const cursor = normalizeCursorValue(getCursor());
+        const entry = cursor.entry ?? basename(cursor.file);
+        const key = `${cursor.file}::${cursor.entry ?? ''}`;
+        if (key !== currentKey) {
+          currentKey = key;
+          seq = 0;
+        }
+        const event: DepthEvent = {
+          kind: 'depth',
+          ts: payload.ts,
+          payload,
+          source: 'DEPTH',
+          seq: seq++,
+        };
+        if (entry) {
+          event.entry = entry;
+        }
+        yield event;
+      }
+    },
+  } satisfies AsyncIterable<DepthEvent> & {
+    currentCursor: () => CoreReaderCursor;
   };
 }
 
@@ -393,16 +478,74 @@ export const __debugCheckpoint = debugCheckpointHelpers;
 
 export async function simulate(argv: string[]): Promise<void> {
   const args = parseArgs(argv);
+  const checkpointLoadRaw = args['checkpoint-load'];
+  const checkpointLoadPath =
+    checkpointLoadRaw && checkpointLoadRaw.trim()
+      ? resolve(process.cwd(), checkpointLoadRaw)
+      : undefined;
+  let checkpoint: CheckpointV1 | undefined;
+  if (checkpointLoadPath) {
+    try {
+      checkpoint = await loadCheckpoint(checkpointLoadPath);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error(
+        `failed to load checkpoint from ${checkpointLoadPath}: ${reason}`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+  }
   const tradeFiles = resolveInputList(args['trades']);
-  if (tradeFiles.length === 0) {
+  const depthFiles = resolveInputList(args['depth']);
+  let symbol = (args['symbol'] ?? 'BTCUSDT') as SymbolId;
+  if (checkpoint && checkpoint.meta?.symbol) {
+    if (
+      symbol !== checkpoint.meta.symbol &&
+      args['symbol'] &&
+      args['symbol'] !== (checkpoint.meta.symbol as unknown as string)
+    ) {
+      console.warn(
+        `symbol argument ${symbol as unknown as string} overridden by checkpoint symbol ${
+          checkpoint.meta.symbol as unknown as string
+        }`,
+      );
+    }
+    symbol = checkpoint.meta.symbol;
+  }
+  if (!checkpoint && tradeFiles.length === 0) {
     console.error(
-      'usage: tf simulate --trades <files> [--depth <files>] [--symbol BTCUSDT] [--checkpoint-save <file>] [--pause-on-start]',
+      'usage: tf simulate --trades <files> [--depth <files>] [--symbol BTCUSDT] [--checkpoint-save <file>] [--checkpoint-load <file>] [--pause-on-start]',
     );
     process.exitCode = 1;
     return;
   }
-  const depthFiles = resolveInputList(args['depth']);
-  const symbol = (args['symbol'] ?? 'BTCUSDT') as SymbolId;
+  if (checkpoint) {
+    if (tradeFiles.length === 0 && checkpoint.cursors.trades) {
+      console.error(
+        'checkpoint includes a trades cursor but no --trades files were provided; please supply the original trade inputs',
+      );
+      process.exitCode = 1;
+      return;
+    }
+    if (depthFiles.length === 0 && checkpoint.cursors.depth) {
+      console.error(
+        'checkpoint includes a depth cursor but no --depth files were provided; please supply the original depth inputs',
+      );
+      process.exitCode = 1;
+      return;
+    }
+  }
+  if (checkpoint && checkpointLoadPath) {
+    const nextSource = checkpoint.merge?.nextSourceOnEqualTs ?? 'auto';
+    console.log(
+      `loaded checkpoint from ${checkpointLoadPath} (symbol=${
+        checkpoint.meta.symbol
+      }, tradesCursor=${checkpoint.cursors.trades ? 'yes' : 'no'}, depthCursor=${
+        checkpoint.cursors.depth ? 'yes' : 'no'
+      }, nextSourceOnEqualTs=${nextSource})`,
+    );
+  }
   const limit = args['limit'] ? Number(args['limit']) : undefined;
   const fromMs = parseTime(args['from']);
   const toMs = parseTime(args['to']);
@@ -467,39 +610,111 @@ export async function simulate(argv: string[]): Promise<void> {
   if (fromMs !== undefined) timeFilter.fromMs = fromMs;
   if (toMs !== undefined) timeFilter.toMs = toMs;
 
-  const tradeOpts: Record<string, unknown> = {
-    kind: 'trades',
-    files: tradeFiles,
-    symbol,
-    format: args['format-trades'] ?? 'auto',
-    internalTag: 'TRADES',
-  };
-  if (Object.keys(timeFilter).length) {
-    tradeOpts['timeFilter'] = timeFilter;
-  }
-  const tradeReader = createReader(
-    tradeOpts as any,
-  ) as AsyncIterable<TradeEvent>;
+  let tradeReader: AsyncIterable<TradeEvent>;
+  let depthReader: AsyncIterable<DepthEvent>;
+  let state: ExchangeState;
+  let accounts: AccountsService;
+  let placed: Order[] = [];
+  let priceScale: number;
+  let qtyScale: number;
+  const mergeStart: MergeStartState = {};
 
-  let depthReader: AsyncIterable<DepthEvent> = createEmptyStream();
-  if (depthFiles.length > 0) {
-    const depthOpts: Record<string, unknown> = {
-      kind: 'depth',
-      files: depthFiles,
+  if (checkpoint) {
+    if (tradeFiles.length === 0 && !checkpoint.cursors.trades) {
+      tradeReader = createEmptyStream<TradeEvent>();
+    } else {
+      const tradeCursor = createJsonlCursorReader({
+        kind: 'trades',
+        files: tradeFiles,
+        symbol,
+        ...(Object.keys(timeFilter).length ? { timeFilter } : {}),
+        ...(checkpoint.cursors.trades
+          ? { startCursor: checkpoint.cursors.trades }
+          : {}),
+      });
+      tradeReader = createTradeEventStreamFromCursor(tradeCursor);
+    }
+    if (depthFiles.length === 0) {
+      depthReader = createEmptyStream<DepthEvent>();
+    } else {
+      const depthCursor = createJsonlCursorReader({
+        kind: 'depth',
+        files: depthFiles,
+        symbol,
+        ...(Object.keys(timeFilter).length ? { timeFilter } : {}),
+        ...(checkpoint.cursors.depth
+          ? { startCursor: checkpoint.cursors.depth }
+          : {}),
+      });
+      depthReader = createDepthEventStreamFromCursor(depthCursor);
+    }
+    const restoredState = deserializeExchangeState(checkpoint.state);
+    try {
+      restoreEngineFromSnapshot(checkpoint.engine, restoredState);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error(`failed to restore engine from checkpoint: ${reason}`);
+      process.exitCode = 1;
+      return;
+    }
+    state = restoredState;
+    accounts = new AccountsService(state);
+    const symbolConfig = state.getSymbolConfig(symbol);
+    if (!symbolConfig) {
+      console.error(
+        `checkpoint state does not contain symbol configuration for ${
+          symbol as unknown as string
+        }`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    priceScale = symbolConfig.priceScale;
+    qtyScale = symbolConfig.qtyScale;
+    mergeStart.nextSourceOnEqualTs = checkpoint.merge?.nextSourceOnEqualTs
+      ? checkpoint.merge.nextSourceOnEqualTs
+      : preferDepth
+        ? 'DEPTH'
+        : 'TRADES';
+  } else {
+    const tradeOpts: Record<string, unknown> = {
+      kind: 'trades',
+      files: tradeFiles,
       symbol,
-      format: args['format-depth'] ?? 'auto',
-      internalTag: 'DEPTH',
+      format: args['format-trades'] ?? 'auto',
+      internalTag: 'TRADES',
     };
     if (Object.keys(timeFilter).length) {
-      depthOpts['timeFilter'] = timeFilter;
+      tradeOpts['timeFilter'] = timeFilter;
     }
-    depthReader = createReader(depthOpts as any) as AsyncIterable<DepthEvent>;
+    tradeReader = createReader(tradeOpts as any) as AsyncIterable<TradeEvent>;
+
+    let depthSource: AsyncIterable<DepthEvent> =
+      createEmptyStream<DepthEvent>();
+    if (depthFiles.length > 0) {
+      const depthOpts: Record<string, unknown> = {
+        kind: 'depth',
+        files: depthFiles,
+        symbol,
+        format: args['format-depth'] ?? 'auto',
+        internalTag: 'DEPTH',
+      };
+      if (Object.keys(timeFilter).length) {
+        depthOpts['timeFilter'] = timeFilter;
+      }
+      depthSource = createReader(depthOpts as any) as AsyncIterable<DepthEvent>;
+    }
+    depthReader = depthSource;
+
+    const setup = setupState(symbol);
+    state = setup.state;
+    accounts = setup.accounts;
+    placed = setup.placed;
+    priceScale = setup.priceScale;
+    qtyScale = setup.qtyScale;
+    mergeStart.nextSourceOnEqualTs = preferDepth ? 'DEPTH' : 'TRADES';
   }
 
-  const { state, accounts, placed, priceScale, qtyScale } = setupState(symbol);
-  const mergeStart: MergeStartState = {
-    nextSourceOnEqualTs: preferDepth ? 'DEPTH' : 'TRADES',
-  };
   const merged = createMergedStream(tradeReader, depthReader, mergeStart, {
     preferDepthOnEqualTs: preferDepth,
   });
