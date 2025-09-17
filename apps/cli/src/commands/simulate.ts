@@ -476,10 +476,13 @@ const debugCheckpointHelpers = process.env['TF_DEBUG_CP']
 
 export const __debugCheckpoint = debugCheckpointHelpers;
 
+const ZIP_SUFFIX = '.zip';
+const GZ_SUFFIX = '.gz';
+
 function normalizeFixtureBasename(value: string): string {
   const lower = value.toLowerCase();
-  if (lower.endsWith('.zip')) return value.slice(0, -4);
-  if (lower.endsWith('.gz')) return value.slice(0, -3);
+  if (lower.endsWith(ZIP_SUFFIX)) return value.slice(0, -ZIP_SUFFIX.length);
+  if (lower.endsWith(GZ_SUFFIX)) return value.slice(0, -GZ_SUFFIX.length);
   return value;
 }
 
