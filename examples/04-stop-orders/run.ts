@@ -67,6 +67,49 @@ function priceIntToBigInt(value: PriceInt): bigint {
   return value as unknown as bigint;
 }
 
+function safeTriggerFromIntString(priceStr?: string): {
+  above: string;
+  below: string;
+} {
+  const fallback = {
+    above: FALLBACK_TRIGGER_ABOVE,
+    below: FALLBACK_TRIGGER_BELOW,
+  } as const;
+  if (!priceStr) {
+    return fallback;
+  }
+  const normalized = priceStr.trim();
+  if (!normalized) {
+    return fallback;
+  }
+  if (!/^\d+$/.test(normalized)) {
+    console.warn(
+      '[stop-orders] non-integer first trade price — using default triggers',
+    );
+    return fallback;
+  }
+  const referenceInt = BigInt(normalized);
+  const clampOffset = (candidate: bigint, cap: PriceInt): bigint => {
+    const positive = candidate > 0n ? candidate : 1n;
+    const capInt = priceIntToBigInt(cap);
+    return positive > capInt ? capInt : positive;
+  };
+  const baseOffset = referenceInt / 100n;
+  const belowOffset = clampOffset(baseOffset, AUTO_MAX_OFFSET_BELOW);
+  const aboveOffset = clampOffset(baseOffset, AUTO_MAX_OFFSET_ABOVE);
+  const belowInt = referenceInt > belowOffset ? referenceInt - belowOffset : 1n;
+  const aboveInt = referenceInt + aboveOffset;
+  const belowPrintable = fromPriceInt(
+    ensurePositivePriceInt(belowInt),
+    SYMBOL_CONFIG.priceScale,
+  );
+  const abovePrintable = fromPriceInt(
+    ensurePositivePriceInt(aboveInt),
+    SYMBOL_CONFIG.priceScale,
+  );
+  return { below: belowPrintable, above: abovePrintable };
+}
+
 async function resolveStopTriggers(
   tradeFiles: string[],
 ): Promise<TriggerResolution> {
@@ -96,36 +139,23 @@ async function resolveStopTriggers(
 
   let referencePrintable: string | undefined;
 
+  let firstTradePrice: string | undefined;
   if (!below || !above) {
     try {
       const rawPrice = await peekFirstTradePrice(tradeFiles);
       if (rawPrice !== undefined) {
         const normalized = rawPrice.trim();
-        if (/^\d+$/.test(normalized)) {
-          const referenceInt = BigInt(normalized);
-          referencePrintable = fromPriceInt(
-            referenceInt as unknown as PriceInt,
-            SYMBOL_CONFIG.priceScale,
-          );
-          const onePercent = referenceInt / 100n;
-          const clampOffset = (offset: bigint, cap: PriceInt): bigint => {
-            const capInt = priceIntToBigInt(cap);
-            return offset > capInt ? capInt : offset;
-          };
-          if (!below) {
-            const offset = clampOffset(onePercent, AUTO_MAX_OFFSET_BELOW);
-            const adjusted = ensurePositivePriceInt(referenceInt + offset);
-            below = adjusted;
-            belowSource = 'auto';
+        if (normalized) {
+          firstTradePrice = normalized;
+          if (/^\d+$/.test(normalized)) {
+            const referenceInt = ensurePositivePriceInt(BigInt(normalized));
+            referencePrintable = fromPriceInt(
+              referenceInt,
+              SYMBOL_CONFIG.priceScale,
+            );
+          } else if (!referencePrintable) {
+            referencePrintable = normalized;
           }
-          if (!above) {
-            const offset = clampOffset(onePercent, AUTO_MAX_OFFSET_ABOVE);
-            const adjusted = ensurePositivePriceInt(referenceInt + offset);
-            above = adjusted;
-            aboveSource = 'auto';
-          }
-        } else if (!referencePrintable) {
-          referencePrintable = normalized;
         }
       }
     } catch (err) {
@@ -134,35 +164,33 @@ async function resolveStopTriggers(
     }
   }
 
-  const applyFallback = (
-    current: PriceInt | undefined,
-    raw: string,
-  ): PriceInt => {
-    if (current) {
-      return current;
+  if (!below || !above) {
+    const { above: triggerAbove, below: triggerBelow } =
+      safeTriggerFromIntString(firstTradePrice);
+    const autoSource: TriggerSource =
+      firstTradePrice && /^\d+$/.test(firstTradePrice) ? 'auto' : 'fallback';
+    if (!below) {
+      try {
+        below = toPriceInt(triggerBelow, SYMBOL_CONFIG.priceScale);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`failed to resolve STOP_MARKET trigger: ${message}`);
+      }
+      belowSource = autoSource;
     }
-    return toPriceInt(raw, SYMBOL_CONFIG.priceScale);
-  };
-
-  try {
-    below = applyFallback(below, FALLBACK_TRIGGER_BELOW);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`failed to resolve STOP_MARKET trigger: ${message}`);
-  }
-  if (!belowSource) {
-    belowSource = 'fallback';
+    if (!above) {
+      try {
+        above = toPriceInt(triggerAbove, SYMBOL_CONFIG.priceScale);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`failed to resolve STOP_LIMIT trigger: ${message}`);
+      }
+      aboveSource = autoSource;
+    }
   }
 
-  try {
-    above = applyFallback(above, FALLBACK_TRIGGER_ABOVE);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`failed to resolve STOP_LIMIT trigger: ${message}`);
-  }
-  if (!aboveSource) {
-    aboveSource = 'fallback';
-  }
+  belowSource ??= 'fallback';
+  aboveSource ??= 'fallback';
 
   const result: TriggerResolution = {
     below: { value: below, source: belowSource },
