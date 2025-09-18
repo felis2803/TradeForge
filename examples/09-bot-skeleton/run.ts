@@ -604,6 +604,7 @@ async function main(): Promise<void> {
             now,
             minActionGapMs: config.minActionGapMs,
             replaceAsCancelPlace: config.replaceAsCancelPlace,
+            verbose: config.verbose,
             ...(lastActionSimTs !== undefined ? { lastActionSimTs } : {}),
             ...(desired ? { want: desired } : {}),
             ...(existing ? { existing } : {}),

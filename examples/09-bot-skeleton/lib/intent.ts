@@ -22,6 +22,7 @@ export interface ReconcileParams {
   now: number;
   minActionGapMs: number;
   replaceAsCancelPlace?: boolean;
+  verbose?: boolean;
 }
 
 export interface ReconcileResult {
@@ -44,9 +45,14 @@ export function reconcile(params: ReconcileParams): ReconcileResult {
     lastActionSimTs,
     minActionGapMs,
     replaceAsCancelPlace,
+    verbose = false,
   } = params;
   const gap = Math.max(0, minActionGapMs);
   if (lastActionSimTs !== undefined && now - lastActionSimTs < gap) {
+    if (verbose) {
+      const delta = now - lastActionSimTs;
+      console.log(`[intent] debounced: ΔsimMs=${delta} < ${gap}`);
+    }
     return { actions: [] };
   }
   if (!want && !existing) {
