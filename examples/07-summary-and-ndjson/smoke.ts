@@ -1,13 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import { constants } from 'node:fs';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, rm } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import process from 'node:process';
 
-const OUTPUT_FILE = '/tmp/tf.reports.ndjson';
-
-async function ensureNdjson(): Promise<number> {
-  await access(OUTPUT_FILE, constants.F_OK);
-  const raw = await readFile(OUTPUT_FILE, 'utf8');
+async function ensureNdjson(path: string): Promise<number> {
+  await access(path, constants.F_OK);
+  const raw = await readFile(path, 'utf8');
   const rows = raw
     .split('\n')
     .map((line) => line.trim())
@@ -23,7 +23,7 @@ async function main(): Promise<void> {
     'node',
     ['dist-examples/07-summary-and-ndjson/run.js'],
     {
-      env: { ...process.env },
+      env: { ...process.env, TF_KEEP_NDJSON: '1' },
       encoding: 'utf8',
       stdio: 'pipe',
     },
@@ -37,15 +37,57 @@ async function main(): Promise<void> {
     throw new Error(`example exited with code ${result.status}${stderr}`);
   }
 
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+
+  if (stdout) {
+    process.stdout.write(stdout);
   }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
+  if (stderr) {
+    process.stderr.write(stderr);
   }
 
-  const rows = await ensureNdjson();
+  const markerMatch = stdout.match(/SUMMARY_NDJSON_OK\s+({.+?})/);
+  if (!markerMatch) {
+    throw new Error('marker SUMMARY_NDJSON_OK not found in stdout');
+  }
+  let ndjsonPath: string;
+  const payload = markerMatch[1];
+  if (!payload) {
+    throw new Error('summary payload missing from marker');
+  }
+  try {
+    const parsed = JSON.parse(payload) as {
+      ndjsonPath?: string;
+    };
+    if (!parsed.ndjsonPath || typeof parsed.ndjsonPath !== 'string') {
+      throw new Error('ndjsonPath missing in summary payload');
+    }
+    ndjsonPath = parsed.ndjsonPath;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`failed to parse summary payload: ${message}`);
+  }
+
+  await sleep(10);
+  const rows = await ensureNdjson(ndjsonPath);
   console.log('EX07_NDJSON_ROWS', rows);
+  console.log('EX07_SUMMARY_NDJSON_PATH', ndjsonPath);
+
+  if (ndjsonPath.includes('tf-ndjson-')) {
+    try {
+      await rm(ndjsonPath, { force: true });
+      const dir = dirname(ndjsonPath);
+      await rm(dir, { recursive: true, force: true });
+    } catch (err) {
+      console.warn(
+        `[examples/07-summary-and-ndjson] smoke warning: failed to cleanup ${ndjsonPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   console.log('EX07_SUMMARY_SMOKE_OK');
 }
 

@@ -2,6 +2,8 @@
 
 Пример объединяет работу с аккаунтами и лимитными ордерами в TradeForge. Сценарий создаёт счёт, вносит депозит в котируемой валюте, выставляет пару LIMIT-ордеров (BUY и SELL), дожидается исполнения сделками из исторической ленты и отменяет оставшийся «висящий» ордер. В конце выводятся балансы и счётчик открытых заявок.
 
+> Числовые поля передавайте строками (fixed-point).
+
 ## Требования
 
 - Установленные зависимости (`pnpm install`).
@@ -72,7 +74,7 @@ pnpm --filter @tradeforge/svc dev
 ACCOUNT_ID=$(curl -s -X POST http://localhost:3000/v1/accounts | jq -r '.accountId')
 
 curl -s -X POST "http://localhost:3000/v1/accounts/$ACCOUNT_ID/deposit" \
-  -H 'content-type: application/json' \
+  -H "content-type: application/json" \
   -d '{"currency":"USDT","amount":"1000"}'
 ```
 
@@ -80,7 +82,7 @@ curl -s -X POST "http://localhost:3000/v1/accounts/$ACCOUNT_ID/deposit" \
 
 ```bash
 ORDER_JSON=$(curl -s -X POST http://localhost:3000/v1/orders \
-  -H 'content-type: application/json' \
+  -H "content-type: application/json" \
   -d '{
         "accountId": "'"$ACCOUNT_ID"'",
         "symbol": "BTCUSDT",
