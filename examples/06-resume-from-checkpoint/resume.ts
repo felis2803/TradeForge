@@ -39,26 +39,16 @@ function resolveDataPath(file: string): string {
   return resolve(process.cwd(), 'examples', '_smoke', file);
 }
 
-const ZIP_SUFFIX = '.zip';
-const GZ_SUFFIX = '.gz';
+const NORMALIZE_SUFFIX_RE = /\.jsonl(\.(gz|zip))?$/i;
 
-function normalizeBasename(value: string): string {
-  const lower = value.toLowerCase();
-  if (lower.endsWith(ZIP_SUFFIX)) {
-    return value.slice(0, -ZIP_SUFFIX.length);
-  }
-  if (lower.endsWith(GZ_SUFFIX)) {
-    return value.slice(0, -GZ_SUFFIX.length);
-  }
-  return value;
+function normalizeName(value: string): string {
+  return basename(value).toLowerCase().replace(NORMALIZE_SUFFIX_RE, '');
 }
 
-function gatherNormalizedBasenames(values: Iterable<string>): Set<string> {
+function gatherNormalizedNames(values: Iterable<string>): Set<string> {
   const normalized = new Set<string>();
   for (const value of values) {
-    const base = basename(value);
-    normalized.add(base);
-    normalized.add(normalizeBasename(base));
+    normalized.add(normalizeName(value));
   }
   return normalized;
 }
@@ -85,21 +75,17 @@ function ensureMatchingInputs(
   if (!cursor) {
     return;
   }
-  const expected = basename(cursor.file);
-  const expectedVariants = new Set([expected, normalizeBasename(expected)]);
+  const expectedBase = basename(cursor.file);
+  const expectedNormalized = normalizeName(cursor.file);
   const candidates = new Set<string>();
   for (const file of files) {
-    const base = basename(file);
-    candidates.add(base);
-    candidates.add(normalizeBasename(base));
+    candidates.add(normalizeName(file));
   }
-  for (const variant of expectedVariants) {
-    if (candidates.has(variant)) {
-      return;
-    }
+  if (candidates.has(expectedNormalized)) {
+    return;
   }
   logger.warn(
-    `${kind} cursor references ${expected}, but provided files are ${
+    `${kind} cursor references ${expectedBase}, but provided files are ${
       files.map((file) => basename(file)).join(', ') || 'none'
     }`,
   );
@@ -140,8 +126,8 @@ async function main(): Promise<void> {
     ...cursorFiles(checkpoint.cursors.depth),
   ];
   const providedInputs = [...tradeFiles, ...depthFiles];
-  const checkpointNormalized = gatherNormalizedBasenames(checkpointInputs);
-  const providedNormalized = gatherNormalizedBasenames(providedInputs);
+  const checkpointNormalized = gatherNormalizedNames(checkpointInputs);
+  const providedNormalized = gatherNormalizedNames(providedInputs);
   const inputsMatch =
     checkpointNormalized.size === providedNormalized.size &&
     [...checkpointNormalized].every((value) => providedNormalized.has(value));

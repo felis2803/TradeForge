@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:3000}"
-SYMBOL="${SYMBOL:-BTCUSDT}"
+: "${BASE_URL:=http://localhost:3000}"
+: "${SYMBOL:=BTCUSDT}"
+
+json_headers=(-H 'content-type: application/json')
 
 usage() {
   cat <<USAGE
@@ -49,9 +51,13 @@ extract_json_field() {
     return 1
   fi
   local value
-  value=$(printf '%s\n' "$body" | jq -er "${jq_filter} // empty" 2>/dev/null || true)
-  if [[ -z "$value" ]]; then
+  if ! value=$(printf '%s\n' "$body" | jq -e -r "$jq_filter" 2>/dev/null); then
     echo "${label} missing in response" >&2
+    printf '%s\n' "$body" >&2
+    return 1
+  fi
+  if [[ -z "$value" ]]; then
+    echo "${label} empty in response" >&2
     printf '%s\n' "$body" >&2
     return 1
   fi
@@ -60,8 +66,17 @@ extract_json_field() {
 
 create_account() {
   local response
-  response=$(curl -sS -X POST "$(join_url '/v1/accounts')")
-  extract_json_field "$response" '.accountId' 'accountId' >/dev/null || return 1
+  response=$(curl -sfS -X POST "$(join_url '/v1/accounts')" \
+    "${json_headers[@]}" -d '{}')
+  local account_id
+  account_id=$(extract_json_field "$response" '.id' 'account id') || {
+    echo 'create_account failed: unexpected response' >&2
+    return 1
+  }
+  if [[ -z "$account_id" ]]; then
+    echo 'create_account failed: empty id' >&2
+    return 1
+  fi
   print_json "$response"
 }
 
@@ -76,8 +91,8 @@ deposit_quote() {
   local payload
   printf -v payload '{"currency":"%s","amount":"%s"}' "$currency" "$amount"
   local response
-  response=$(curl -sS -X POST "$(join_url "/v1/accounts/${account_id}/deposit")" \
-    -H 'content-type: application/json' \
+  response=$(curl -sfS -X POST "$(join_url "/v1/accounts/${account_id}/deposit")" \
+    "${json_headers[@]}" \
     -d "$payload")
   print_json "$response"
 }
@@ -96,10 +111,18 @@ place_limit() {
   printf -v payload '{"accountId":"%s","symbol":"%s","type":"LIMIT","side":"%s","qty":"%s","price":"%s"}' \
     "$account_id" "$symbol" "$side" "$qty" "$price"
   local response
-  response=$(curl -sS -X POST "$(join_url '/v1/orders')" \
-    -H 'content-type: application/json' \
+  response=$(curl -sfS -X POST "$(join_url '/v1/orders')" \
+    "${json_headers[@]}" \
     -d "$payload")
-  extract_json_field "$response" '.id' 'order id' >/dev/null || return 1
+  local order_id
+  order_id=$(extract_json_field "$response" '.id // .orderId' 'order id') || {
+    echo 'place_limit failed: unexpected response' >&2
+    return 1
+  }
+  if [[ -z "$order_id" ]]; then
+    echo 'place_limit failed: empty order id' >&2
+    return 1
+  fi
   print_json "$response"
 }
 
@@ -118,10 +141,18 @@ place_stop_market() {
   printf -v payload '{"accountId":"%s","symbol":"%s","type":"STOP_MARKET","side":"%s","qty":"%s","triggerPrice":"%s","triggerDirection":"%s"}' \
     "$account_id" "$symbol" "$side" "$qty" "$trigger_price" "$trigger_direction"
   local response
-  response=$(curl -sS -X POST "$(join_url '/v1/orders')" \
-    -H 'content-type: application/json' \
+  response=$(curl -sfS -X POST "$(join_url '/v1/orders')" \
+    "${json_headers[@]}" \
     -d "$payload")
-  extract_json_field "$response" '.id' 'order id' >/dev/null || return 1
+  local order_id
+  order_id=$(extract_json_field "$response" '.id // .orderId' 'order id') || {
+    echo 'place_stop_market failed: unexpected response' >&2
+    return 1
+  }
+  if [[ -z "$order_id" ]]; then
+    echo 'place_stop_market failed: empty order id' >&2
+    return 1
+  fi
   print_json "$response"
 }
 
@@ -135,7 +166,7 @@ list_open() {
   local url
   printf -v url '%s' "$(join_url "/v1/orders/open?accountId=${account_id}&symbol=${symbol}")"
   local response
-  response=$(curl -sS "$url")
+  response=$(curl -sfS "$url")
   print_json "$response"
 }
 
@@ -146,7 +177,7 @@ cancel_by_id() {
   fi
   local order_id="$1"
   local response
-  response=$(curl -sS -X DELETE "$(join_url "/v1/orders/${order_id}")")
+  response=$(curl -sfS -X DELETE "$(join_url "/v1/orders/${order_id}")")
   print_json "$response"
 }
 

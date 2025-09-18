@@ -24,11 +24,13 @@ const DEPTH_FILE = resolve(DATA_ROOT, 'mini-depth.jsonl');
 type ClockKind = 'logical' | 'accelerated' | 'wall';
 type ClockWithDesc = { clock: SimClock; desc: string };
 
+type StopReason = 'maxEvents' | 'maxSimTimeMs' | 'maxWallTimeMs' | 'completed';
+
 type RunConfig = {
   kind: ClockKind;
   limits: ReplayLimits;
   acceleratedSpeed?: number;
-  expectedStop?: 'maxEvents' | 'maxSimTimeMs' | 'maxWallTimeMs';
+  expectedStop?: Exclude<StopReason, 'completed'>;
 };
 
 function formatLimits(limits?: ReplayLimits): string {
@@ -137,7 +139,7 @@ async function runOnce(config: RunConfig): Promise<void> {
   };
 
   logger.info(`run completed kind=${config.kind} events=${progress.eventsOut}`);
-  const reason = result.stoppedBy?.maxEvents
+  const reason: StopReason = result.stoppedBy?.maxEvents
     ? 'maxEvents'
     : result.stoppedBy?.maxSimTimeMs
       ? 'maxSimTimeMs'
