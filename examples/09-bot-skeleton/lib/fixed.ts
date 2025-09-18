@@ -18,6 +18,12 @@ export function toBigIntOr(
   return BigInt(source.trim());
 }
 
+/**
+ * Integer multiply-divide helper: returns `floor((A * B) / C)` as a decimal string.
+ *
+ * Все аргументы должны быть строками целых неотрицательных чисел (fixed-point представление).
+ * Бросает ошибку при нецелых входах или если знаменатель `C` равен нулю.
+ */
 export function mulDivInt(a: string, b: string, c: string): string {
   if (!isIntString(a) || !isIntString(b) || !isIntString(c)) {
     throw new Error('mulDivInt expects int strings');

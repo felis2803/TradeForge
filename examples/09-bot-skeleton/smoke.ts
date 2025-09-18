@@ -32,27 +32,30 @@ function main(): void {
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
 
-  const printSnippet = (): void => {
-    const stdoutSnippet = stdout.slice(0, 500) || '<empty>';
-    const stderrSnippet = stderr.slice(0, 500) || '<empty>';
-    console.error('[examples/09-bot-skeleton] stdout snippet:', stdoutSnippet);
-    console.error('[examples/09-bot-skeleton] stderr snippet:', stderrSnippet);
+  const stdoutSnippet = stdout.slice(0, 500) || '<empty>';
+  const stderrSnippet = stderr.slice(0, 500) || '<empty>';
+
+  const logSnippet = (prefix?: string): void => {
+    const label = prefix ? `${prefix} ` : '';
+    console.error(`${label}STDOUT:`, stdoutSnippet);
+    console.error(`${label}STDERR:`, stderrSnippet);
   };
 
   if (typeof result.status === 'number' && result.status !== 0) {
-    printSnippet();
+    logSnippet('[examples/09-bot-skeleton]');
     throw new Error(`example exited with code ${result.status}`);
   }
 
   const match = stdout.match(/BOT_OK\s+({.+})/);
   if (!match) {
-    printSnippet();
-    throw new Error('BOT_OK marker not found in stdout');
+    console.error('Smoke failed: BOT_OK not found');
+    logSnippet();
+    process.exit(1);
   }
 
   const payloadSource = match[1];
   if (!payloadSource) {
-    printSnippet();
+    logSnippet('[examples/09-bot-skeleton]');
     throw new Error('BOT_OK payload missing JSON body');
   }
 
@@ -60,13 +63,13 @@ function main(): void {
   try {
     payload = JSON.parse(payloadSource);
   } catch (err) {
-    printSnippet();
+    logSnippet('[examples/09-bot-skeleton]');
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`failed to parse BOT_OK payload: ${message}`);
   }
 
   if (!payload || typeof payload !== 'object') {
-    printSnippet();
+    logSnippet('[examples/09-bot-skeleton]');
     throw new Error('BOT_OK payload must be an object');
   }
 

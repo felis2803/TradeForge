@@ -18,6 +18,39 @@ export interface BookState {
   asks: Map<bigint, bigint>;
 }
 
+function parseVerboseFlag(value: string | undefined): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return ['1', 'true', 'yes', 'y'].includes(normalized);
+}
+
+const BOOK_VERBOSE = parseVerboseFlag(process.env['TF_VERBOSE']);
+
+function describeLevelValue(value: unknown): string {
+  if (typeof value === 'bigint') {
+    return value.toString(10);
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value === undefined) {
+    return 'undefined';
+  }
+  if (value === null) {
+    return 'null';
+  }
+  return String(value);
+}
+
+function logInvalidLevel(price: string, qty: string, reason: string): void {
+  if (!BOOK_VERBOSE) {
+    return;
+  }
+  console.warn('[book] skip invalid level', { price, qty, reason });
+}
+
 function setBookPrice(
   state: BookState,
   key: 'bestBid' | 'bestAsk' | 'mid',
@@ -46,14 +79,6 @@ function normalizeInt(
 
 function toRawPrice(value: PriceInt | undefined): bigint | undefined {
   return normalizeInt(value);
-}
-
-function toRawQty(value: QtyInt | bigint | undefined): bigint | undefined {
-  const normalized = normalizeInt(value);
-  if (normalized === undefined) {
-    return undefined;
-  }
-  return normalized < 0n ? 0n : normalized;
 }
 
 function toPrice(value: bigint): PriceInt;
@@ -93,9 +118,47 @@ function applyDepthLevels(
   qtySelector: (level: DepthEvent['payload']['bids'][number]) => QtyInt,
 ): void {
   for (const level of updates) {
-    const price = normalizeInt(priceSelector(level));
-    const qty = toRawQty(qtySelector(level));
-    if (price === undefined || qty === undefined) {
+    const rawPrice = priceSelector(level);
+    const rawQty = qtySelector(level);
+    const displayPrice = describeLevelValue(rawPrice);
+    const displayQty = describeLevelValue(rawQty);
+    const priceStr = displayPrice.trim();
+    const qtyStr = displayQty.trim();
+    const priceIsInt = isIntString(priceStr);
+    const qtyIsInt = isIntString(qtyStr);
+
+    if (!priceIsInt || !qtyIsInt) {
+      const invalidParts: string[] = [];
+      if (!priceIsInt) {
+        invalidParts.push('price');
+      }
+      if (!qtyIsInt) {
+        invalidParts.push('qty');
+      }
+      logInvalidLevel(
+        displayPrice,
+        displayQty,
+        `invalid-${invalidParts.join('-')}`,
+      );
+      continue;
+    }
+
+    const price = BigInt(priceStr);
+    const qty = BigInt(qtyStr);
+
+    if (price < 0n || qty < 0n) {
+      const negativeParts: string[] = [];
+      if (price < 0n) {
+        negativeParts.push('price');
+      }
+      if (qty < 0n) {
+        negativeParts.push('qty');
+      }
+      logInvalidLevel(
+        displayPrice,
+        displayQty,
+        `negative-${negativeParts.join('-')}`,
+      );
       continue;
     }
     if (qty <= 0n) {
