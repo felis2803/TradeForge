@@ -15,7 +15,11 @@ import {
   type QtyInt,
   type SymbolId,
 } from '@tradeforge/core';
-import { buildDepthReader, buildTradesReader } from '../_shared/readers.js';
+import {
+  buildDepthReader,
+  buildTradesReader,
+  peekFirstTradePrice,
+} from '../_shared/readers.js';
 import { buildMerged } from '../_shared/merge.js';
 import { runScenario } from '../_shared/replay.js';
 import { createLogger } from '../_shared/logging.js';
@@ -135,47 +139,6 @@ function parseEnvString(key: string): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-async function detectFirstTradePrice(
-  files: string[],
-): Promise<{ price: PriceInt; printable: string } | undefined> {
-  try {
-    const reader = buildTradesReader(files);
-    const iterator = reader[Symbol.asyncIterator]();
-    try {
-      const { value, done } = await iterator.next();
-      if (!done && value?.payload?.price) {
-        const price = value.payload.price;
-        return {
-          price,
-          printable: fromPriceInt(price, SYMBOL_CONFIG.priceScale),
-        };
-      }
-    } finally {
-      if (typeof iterator.return === 'function') {
-        await iterator.return();
-      }
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(`failed to inspect trades for reference price: ${message}`);
-  }
-  return undefined;
-}
-
-function computePriceBand(
-  raw: PriceInt,
-  multiplier: bigint,
-  divisor: bigint,
-): string {
-  const value = raw as unknown as bigint;
-  const scaled = (value * multiplier) / divisor;
-  const adjusted = scaled > 0n ? scaled : 1n;
-  return fromPriceInt(
-    adjusted as unknown as PriceInt,
-    SYMBOL_CONFIG.priceScale,
-  );
-}
-
 async function resolveOrderPrices(tradeFiles: string[]): Promise<{
   buy: string;
   sell: string;
@@ -189,26 +152,75 @@ async function resolveOrderPrices(tradeFiles: string[]): Promise<{
     return { buy: envBuy, sell: envSell, source: 'env' };
   }
 
-  const reference = await detectFirstTradePrice(tradeFiles);
+  const FALLBACK_BUY = '10000';
+  const FALLBACK_SELL = '11000';
+
   let buy = envBuy;
   let sell = envSell;
-  let source: 'env' | 'auto' | 'fallback' = 'env';
+  let referencePrintable: string | undefined;
+  let usedAuto = false;
+  let usedFallback = false;
 
-  if (reference) {
-    if (!buy) {
-      buy = computePriceBand(reference.price, 99n, 100n);
-    }
-    if (!sell) {
-      sell = computePriceBand(reference.price, 101n, 100n);
-    }
-    source = 'auto';
-  }
-
-  const finalBuy = buy ?? '10000';
-  const finalSell = sell ?? '11000';
   if (!buy || !sell) {
-    source = reference ? 'auto' : 'fallback';
+    try {
+      const rawPrice = await peekFirstTradePrice(tradeFiles);
+      if (rawPrice !== undefined) {
+        if (/^-?\d+$/.test(rawPrice)) {
+          const referenceInt = BigInt(rawPrice);
+          if (referenceInt >= 0n) {
+            referencePrintable = fromPriceInt(
+              referenceInt as unknown as PriceInt,
+              SYMBOL_CONFIG.priceScale,
+            );
+          } else {
+            referencePrintable = rawPrice;
+          }
+          const ensurePositive = (value: bigint): bigint => {
+            if (value > 0n) {
+              return value;
+            }
+            return 1n;
+          };
+          if (!buy && referenceInt >= 0n) {
+            const adjusted = ensurePositive((referenceInt * 99n) / 100n);
+            buy = fromPriceInt(
+              adjusted as unknown as PriceInt,
+              SYMBOL_CONFIG.priceScale,
+            );
+            usedAuto = true;
+          }
+          if (!sell && referenceInt >= 0n) {
+            const adjusted = ensurePositive((referenceInt * 101n) / 100n);
+            sell = fromPriceInt(
+              adjusted as unknown as PriceInt,
+              SYMBOL_CONFIG.priceScale,
+            );
+            usedAuto = true;
+          }
+        } else {
+          referencePrintable = rawPrice;
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`failed to inspect trades for reference price: ${message}`);
+    }
   }
+
+  if (!buy) {
+    buy = FALLBACK_BUY;
+    usedFallback = true;
+  }
+  if (!sell) {
+    sell = FALLBACK_SELL;
+    usedFallback = true;
+  }
+
+  const source: 'env' | 'auto' | 'fallback' = usedFallback
+    ? 'fallback'
+    : usedAuto
+      ? 'auto'
+      : 'env';
 
   const result: {
     buy: string;
@@ -216,12 +228,12 @@ async function resolveOrderPrices(tradeFiles: string[]): Promise<{
     source: 'env' | 'auto' | 'fallback';
     reference?: string;
   } = {
-    buy: finalBuy,
-    sell: finalSell,
+    buy,
+    sell,
     source,
   };
-  if (reference?.printable) {
-    result.reference = reference.printable;
+  if (referencePrintable) {
+    result.reference = referencePrintable;
   }
   return result;
 }

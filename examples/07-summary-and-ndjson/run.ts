@@ -1,5 +1,11 @@
 import { once } from 'node:events';
-import { createWriteStream, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  createWriteStream,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
@@ -403,8 +409,12 @@ async function main(): Promise<void> {
   if (!keepNdjson) {
     try {
       rmSync(outputPath, { force: true });
-      if (tempDir) {
-        rmSync(tempDir, { recursive: true, force: true });
+      if (tempDir && existsSync(tempDir)) {
+        const contents = readdirSync(tempDir);
+        if (contents.length === 0) {
+          rmSync(tempDir, { recursive: true });
+          logger.info(`removed NDJSON temp dir ${tempDir}`);
+        }
       }
     } catch (err) {
       logger.warn(

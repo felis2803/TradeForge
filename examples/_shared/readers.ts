@@ -181,6 +181,41 @@ export function buildTradesReader(
   return wrapTradeCursor(cursor);
 }
 
+export async function peekFirstTradePrice(
+  files: string[],
+): Promise<string | undefined> {
+  const resolved = ensureFiles(
+    'trades',
+    resolveFiles(files, process.env['TF_TRADES_FILES']),
+  );
+  const options: JsonlCursorTradesOptions = {
+    kind: 'trades',
+    files: resolved,
+    limit: 1,
+  };
+  const cursor = createJsonlCursorReader(options);
+  const iterator = cursor[Symbol.asyncIterator]();
+  try {
+    const { value, done } = await iterator.next();
+    if (done || !value) {
+      return undefined;
+    }
+    const trade = value as Trade;
+    const rawPrice = trade.price as unknown;
+    if (typeof rawPrice === 'bigint') {
+      return rawPrice.toString(10);
+    }
+    if (rawPrice !== undefined && rawPrice !== null) {
+      return String(rawPrice);
+    }
+    return undefined;
+  } finally {
+    if (typeof iterator.return === 'function') {
+      await iterator.return();
+    }
+  }
+}
+
 export function buildDepthReader(
   files: string[],
   startCursor?: CoreReaderCursor,

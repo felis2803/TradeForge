@@ -23,22 +23,10 @@ function main(): void {
   if (result.error) {
     throw result.error;
   }
-  if (typeof result.status === 'number' && result.status !== 0) {
-    const stderr = result.stderr ? `\n${result.stderr}` : '';
-    throw new Error(`example exited with code ${result.status}${stderr}`);
-  }
-
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
 
-  if (stdout) {
-    process.stdout.write(stdout);
-  }
-  if (stderr) {
-    process.stderr.write(stderr);
-  }
-
-  if (!stdout.includes('ACC_ORDERS_OK')) {
+  const printSnippet = (): void => {
     const stdoutSnippet = stdout.slice(0, 500);
     const stderrSnippet = stderr.slice(0, 500);
     console.error(
@@ -49,7 +37,23 @@ function main(): void {
       '[examples/03-accounts-and-orders] smoke stderr snippet:',
       stderrSnippet.length > 0 ? stderrSnippet : '<empty>',
     );
+  };
+
+  if (typeof result.status === 'number' && result.status !== 0) {
+    printSnippet();
+    throw new Error(`example exited with code ${result.status}`);
+  }
+
+  if (!stdout.includes('ACC_ORDERS_OK')) {
+    printSnippet();
     throw new Error('marker ACC_ORDERS_OK not found in stdout');
+  }
+
+  if (stdout) {
+    process.stdout.write(stdout);
+  }
+  if (stderr) {
+    process.stderr.write(stderr);
   }
   console.log('EX03_ACC_ORDERS_SMOKE_OK');
 }
