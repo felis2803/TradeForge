@@ -165,8 +165,9 @@ async function resolveOrderPrices(tradeFiles: string[]): Promise<{
     try {
       const rawPrice = await peekFirstTradePrice(tradeFiles);
       if (rawPrice !== undefined) {
-        if (/^-?\d+$/.test(rawPrice)) {
-          const referenceInt = BigInt(rawPrice);
+        const normalizedRawPrice = rawPrice.trim();
+        if (/^\d+$/.test(normalizedRawPrice)) {
+          const referenceInt = BigInt(normalizedRawPrice);
           if (referenceInt >= 0n) {
             referencePrintable = fromPriceInt(
               referenceInt as unknown as PriceInt,
@@ -198,7 +199,7 @@ async function resolveOrderPrices(tradeFiles: string[]): Promise<{
             usedAuto = true;
           }
         } else {
-          referencePrintable = rawPrice;
+          referencePrintable = normalizedRawPrice;
         }
       }
     } catch (err) {

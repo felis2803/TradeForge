@@ -195,6 +195,10 @@ export async function peekFirstTradePrice(
   };
   const cursor = createJsonlCursorReader(options);
   const iterator = cursor[Symbol.asyncIterator]();
+  const close = (cursor as { close?: () => Promise<void> | void }).close?.bind(
+    cursor,
+  );
+  let failed = false;
   try {
     const { value, done } = await iterator.next();
     if (done || !value) {
@@ -209,9 +213,27 @@ export async function peekFirstTradePrice(
       return String(rawPrice);
     }
     return undefined;
+  } catch (err) {
+    failed = true;
+    throw err;
   } finally {
+    let releaseError: unknown;
     if (typeof iterator.return === 'function') {
-      await iterator.return();
+      try {
+        await iterator.return();
+      } catch (err) {
+        releaseError ??= err;
+      }
+    }
+    if (close) {
+      try {
+        await close();
+      } catch (err) {
+        releaseError ??= err;
+      }
+    }
+    if (!failed && releaseError) {
+      throw releaseError;
     }
   }
 }
