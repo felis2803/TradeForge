@@ -22,15 +22,13 @@ const TRADES_FILE = resolve(DATA_ROOT, 'mini-trades.jsonl');
 const DEPTH_FILE = resolve(DATA_ROOT, 'mini-depth.jsonl');
 
 type ClockKind = 'logical' | 'accelerated' | 'wall';
-type LimitReason = 'maxEvents' | 'maxSimTimeMs' | 'maxWallTimeMs';
-
 type ClockWithDesc = { clock: SimClock; desc: string };
 
 type RunConfig = {
   kind: ClockKind;
-  reason: LimitReason;
   limits: ReplayLimits;
   acceleratedSpeed?: number;
+  expectedStop?: 'maxEvents' | 'maxSimTimeMs' | 'maxWallTimeMs';
 };
 
 function formatLimits(limits?: ReplayLimits): string {
@@ -61,6 +59,35 @@ function computeSimMs(progress: ReplayProgress): number {
   return Math.max(0, end - start);
 }
 
+type StopFlags = Partial<
+  Record<'maxEvents' | 'maxSimTimeMs' | 'maxWallTimeMs', boolean>
+>;
+
+function detectStoppedBy(
+  progress: ReplayProgress,
+  limits: ReplayLimits | undefined,
+  wallMs: number,
+  simMs: number,
+): StopFlags {
+  if (!limits) {
+    return {};
+  }
+  const flags: StopFlags = {};
+  if (
+    limits.maxEvents !== undefined &&
+    progress.eventsOut >= limits.maxEvents
+  ) {
+    flags.maxEvents = true;
+  }
+  if (limits.maxSimTimeMs !== undefined && simMs >= limits.maxSimTimeMs) {
+    flags.maxSimTimeMs = true;
+  }
+  if (limits.maxWallTimeMs !== undefined && wallMs >= limits.maxWallTimeMs) {
+    flags.maxWallTimeMs = true;
+  }
+  return flags;
+}
+
 function buildClock(kind: ClockKind, speed?: number): ClockWithDesc {
   if (kind === 'logical') {
     const clock = createLogicalClock();
@@ -84,9 +111,9 @@ function createTimeline(): AsyncIterable<MergedEvent> {
 async function runOnce(config: RunConfig): Promise<void> {
   const { clock, desc } = buildClock(config.kind, config.acceleratedSpeed);
   logger.info(
-    `run start kind=${config.kind} reason=${config.reason} clock=${desc}${formatLimits(
+    `run start kind=${config.kind} clock=${desc}${formatLimits(
       config.limits,
-    )}`,
+    )}${config.expectedStop ? ` expectedStop=${config.expectedStop}` : ''}`,
   );
 
   const progress = await runReplay({
@@ -98,35 +125,46 @@ async function runOnce(config: RunConfig): Promise<void> {
     },
   });
 
+  const wallMs = computeWallMs(progress);
+  const simMs = computeSimMs(progress);
+  const stoppedBy = detectStoppedBy(progress, config.limits, wallMs, simMs);
   const result = {
     kind: config.kind,
-    reason: config.reason,
     eventsOut: progress.eventsOut,
-    wallMs: computeWallMs(progress),
-    simMs: computeSimMs(progress),
+    wallMs,
+    simMs,
+    stoppedBy,
   };
 
   logger.info(`run completed kind=${config.kind} events=${progress.eventsOut}`);
-  console.log('LIMITS_SPEED_RESULT', result);
+  const reason = result.stoppedBy?.maxEvents
+    ? 'maxEvents'
+    : result.stoppedBy?.maxSimTimeMs
+      ? 'maxSimTimeMs'
+      : result.stoppedBy?.maxWallTimeMs
+        ? 'maxWallTimeMs'
+        : 'completed';
+  console.log('LIMITS', { reason, eventsOut: result.eventsOut, wallMs, simMs });
+  console.log('LIMITS_SPEED_RESULT', { ...result, reason });
 }
 
 async function runAll(): Promise<void> {
   const runs: RunConfig[] = [
     {
       kind: 'logical',
-      reason: 'maxEvents',
       limits: { maxEvents: 10 },
+      expectedStop: 'maxEvents',
     },
     {
       kind: 'accelerated',
-      reason: 'maxSimTimeMs',
       limits: { maxSimTimeMs: 2000 },
       acceleratedSpeed: 20,
+      expectedStop: 'maxSimTimeMs',
     },
     {
       kind: 'wall',
-      reason: 'maxWallTimeMs',
       limits: { maxWallTimeMs: 1200 },
+      expectedStop: 'maxWallTimeMs',
     },
   ];
 

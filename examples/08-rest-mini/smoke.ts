@@ -6,17 +6,29 @@ function buildUrl(path: string): string {
   return new URL(path, BASE_URL).toString();
 }
 
-async function isReachable(): Promise<boolean> {
-  try {
-    await fetch(buildUrl('/'));
-    return true;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn(
-      `[examples/08-rest-mini] fetch to ${BASE_URL} failed: ${message}`,
-    );
-    return false;
+async function probeService(): Promise<{
+  reachable: boolean;
+  reason?: string;
+}> {
+  const probes = ['/v1/version', '/health', '/'];
+  let lastError: string | undefined;
+  for (const path of probes) {
+    try {
+      const response = await fetch(buildUrl(path));
+      if (response.ok || response.status === 404) {
+        return { reachable: true };
+      }
+      lastError = `received HTTP ${response.status} from ${path}`;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
   }
+  const message =
+    lastError ?? 'no probe endpoint responded with a successful status';
+  console.warn(
+    `[examples/08-rest-mini] probe to ${BASE_URL} failed: ${message}`,
+  );
+  return { reachable: false, reason: message };
 }
 
 async function createAccount(): Promise<string> {
@@ -48,8 +60,8 @@ async function createAccount(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const reachable = await isReachable();
-  if (!reachable) {
+  const probe = await probeService();
+  if (!probe.reachable) {
     console.log(
       `[examples/08-rest-mini] svc is not reachable at ${BASE_URL}. Start it with: pnpm --filter @tradeforge/svc dev`,
     );

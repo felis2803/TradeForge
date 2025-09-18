@@ -26,17 +26,27 @@ function runNode(
   };
 }
 
-function parseSaveOutput(stdout: string): { cpPath: string } {
+function parseSaveOutput(stdout: string): {
+  cpPath: string;
+  eventsOut: number;
+} {
   const match = stdout.match(/SAVE_OK\s+({.+?})/);
   if (!match) {
     throw new Error('SAVE_OK marker not found in save output');
   }
   try {
-    const parsed = JSON.parse(match[1] ?? '{}') as { cpPath?: string };
+    const parsed = JSON.parse(match[1] ?? '{}') as {
+      cpPath?: string;
+      eventsOut?: unknown;
+    };
     if (!parsed.cpPath || typeof parsed.cpPath !== 'string') {
       throw new Error('cpPath missing in SAVE_OK payload');
     }
-    return { cpPath: parsed.cpPath };
+    const eventsOut = Number(parsed.eventsOut);
+    if (!Number.isFinite(eventsOut)) {
+      throw new Error('eventsOut missing in SAVE_OK payload');
+    }
+    return { cpPath: parsed.cpPath, eventsOut };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new Error(`failed to parse SAVE_OK payload: ${reason}`);
@@ -50,16 +60,29 @@ function ensureCheckpoint(path: string): void {
   }
 }
 
-function parseResumeOutput(stdout: string): void {
+function parseResumeOutput(stdout: string): { eventsOutDelta: number } {
   const match = stdout.match(/RESUME_OK\s+({.+?})/);
   if (!match) {
     throw new Error('RESUME_OK marker not found in resume output');
   }
   try {
-    const parsed = JSON.parse(match[1] ?? '{}') as { loaded?: boolean };
+    const parsed = JSON.parse(match[1] ?? '{}') as {
+      loaded?: boolean;
+      eventsOutDelta?: unknown;
+    };
     if (parsed.loaded !== true) {
       throw new Error('resume payload did not confirm loaded=true');
     }
+    const delta = Number(parsed.eventsOutDelta);
+    if (!Number.isFinite(delta)) {
+      throw new Error('resume payload is missing eventsOutDelta');
+    }
+    if (delta <= 0) {
+      throw new Error(
+        `resume did not produce additional events (eventsOutDelta=${delta})`,
+      );
+    }
+    return { eventsOutDelta: delta };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new Error(`failed to parse RESUME_OK payload: ${reason}`);
@@ -108,7 +131,11 @@ function main(): void {
     throw new Error(`resume example exited with code ${resume.status}`);
   }
 
-  parseResumeOutput(resume.stdout);
+  const resumeInfo = parseResumeOutput(resume.stdout);
+  const totalEvents = info.eventsOut + resumeInfo.eventsOutDelta;
+  process.stdout.write(
+    `\n[examples/06-resume-from-checkpoint] smoke: events before=${info.eventsOut} delta=${resumeInfo.eventsOutDelta} after=${totalEvents}\n`,
+  );
   cleanup(info.cpPath);
 
   console.log('EX06_RESUME_SMOKE_OK');
