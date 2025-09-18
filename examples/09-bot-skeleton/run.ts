@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import { createWriteStream } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 
@@ -39,6 +39,7 @@ import {
   type ExistingOrderView,
   type OrderIntent,
 } from './lib/intent.js';
+import { makeXorShift32 } from './lib/rng.js';
 import {
   capQtyByBalance,
   canPlace,
@@ -59,7 +60,7 @@ const DEFAULT_SPREAD_BPS = 5;
 const DEFAULT_EMA_FAST = 12;
 const DEFAULT_EMA_SLOW = 26;
 const DEFAULT_SEED = 42;
-const MIN_ACTION_INTERVAL_MS = 200;
+const DEFAULT_MIN_ACTION_INTERVAL_MS = 200;
 
 const SYMBOL_CONFIG = {
   base: 'BTC',
@@ -76,6 +77,7 @@ const FEE_CONFIG = {
 interface NdjsonLogger {
   write(entry: unknown): void;
   close(): Promise<void>;
+  readonly path: string;
 }
 
 interface BotConfig {
@@ -92,6 +94,9 @@ interface BotConfig {
   limits: ReplayLimits;
   verbose: boolean;
   ndjsonPath?: string;
+  minActionGapMs: number;
+  replaceAsCancelPlace: boolean;
+  keepNdjson: boolean;
 }
 
 interface AsyncEventQueue<T> {
@@ -186,6 +191,10 @@ function parseEnvInt(key: string, fallback: number): number {
   return num;
 }
 
+function parseEnvBool(key: string): boolean {
+  return parseEnvString(key) === '1';
+}
+
 function parseClock(value?: string): BotConfig['clock'] {
   if (!value) {
     return 'logical';
@@ -212,16 +221,6 @@ function parseFileList(key: string, fallback: string[]): string[] {
   return parts.length > 0 ? parts : fallback;
 }
 
-function createPrng(seed: number): () => number {
-  let t = seed >>> 0 || 1;
-  return () => {
-    t += 0x6d2b79f5;
-    let r = Math.imul(t ^ (t >>> 15), t | 1);
-    r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 async function createNdjsonLogger(path: string): Promise<NdjsonLogger> {
   const resolved = resolve(path);
   const dir = dirname(resolved);
@@ -243,7 +242,41 @@ async function createNdjsonLogger(path: string): Promise<NdjsonLogger> {
       stream.end();
       await once(stream, 'close');
     },
+    get path() {
+      return resolved;
+    },
   } satisfies NdjsonLogger;
+}
+
+async function cleanupNdjson(path: string): Promise<void> {
+  try {
+    await rm(path, { force: true });
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code && code !== 'ENOENT') {
+      throw err;
+    }
+  }
+  const dir = dirname(path);
+  if (!dir || dir === '.' || dir === '/' || dir === path) {
+    return;
+  }
+  try {
+    const entries = await readdir(dir);
+    if (entries.length === 0) {
+      await rm(dir, { recursive: false });
+    }
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (
+      code &&
+      code !== 'ENOENT' &&
+      code !== 'ENOTEMPTY' &&
+      code !== 'EEXIST'
+    ) {
+      throw err;
+    }
+  }
 }
 
 function buildLimits(): ReplayLimits {
@@ -288,8 +321,14 @@ function loadConfig(): BotConfig {
   const clock = parseClock(parseEnvString('TF_CLOCK'));
   const speedRaw = parseEnvString('TF_SPEED');
   const limits = buildLimits();
-  const verbose = parseEnvString('TF_VERBOSE') === '1';
+  const verbose = parseEnvBool('TF_VERBOSE');
   const ndjsonPath = parseEnvString('TF_NDJSON_PATH');
+  const minActionGapMs = Math.max(
+    0,
+    parseEnvInt('TF_MIN_ACTION_MS', DEFAULT_MIN_ACTION_INTERVAL_MS),
+  );
+  const replaceAsCancelPlace = parseEnvBool('TF_REPLACE_AS_CANCEL_PLACE');
+  const keepNdjson = parseEnvBool('TF_KEEP_NDJSON');
   const base: BotConfig = {
     symbol,
     tradesFiles,
@@ -302,6 +341,9 @@ function loadConfig(): BotConfig {
     clock,
     limits,
     verbose,
+    minActionGapMs,
+    replaceAsCancelPlace,
+    keepNdjson,
   };
   const speedValue = speedRaw ? Number(speedRaw) : undefined;
   if (
@@ -383,7 +425,7 @@ function buildExistingOrder(
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const prng = createPrng(config.seed);
+  const prng = makeXorShift32(config.seed);
   const sessionId = Math.floor(prng() * 1e9)
     .toString(16)
     .padStart(8, '0');
@@ -419,7 +461,8 @@ async function main(): Promise<void> {
   const emaFast: EmaTracker = { window: config.emaFast };
   const emaSlow: EmaTracker = { window: config.emaSlow };
   let lastSignal: CrossSignal = 'FLAT';
-  let lastActionTs: number | undefined;
+  let lastActionSimTs: number | undefined;
+  let waitingForMarketLogged = false;
 
   const queue = createAsyncEventQueue<MergedEvent>();
   let ndjsonLogger: NdjsonLogger | undefined;
@@ -461,259 +504,326 @@ async function main(): Promise<void> {
     }
   })();
 
-  if (config.ndjsonPath) {
-    ndjsonLogger = await createNdjsonLogger(config.ndjsonPath);
-  }
-
-  const desiredQty = toQtyInt(config.qty, SYMBOL_CONFIG.qtyScale);
-  const limits = config.limits;
-  const { clock } = buildClock(config.clock, config.speed);
-
-  let replayError: unknown;
-  let progress: ReplayProgress | undefined;
-
   try {
-    progress = await runReplay({
-      timeline,
-      clock,
-      limits: {
-        ...limits,
-      },
-      onEvent: async (event: MergedEvent) => {
-        queue.push(event);
-        updateBook(book, event);
-
-        const mid = book.mid ?? book.lastTrade;
-        if (!mid) {
-          return;
-        }
-
-        const fast = updateEma(emaFast, mid);
-        const slow = updateEma(emaSlow, mid);
-        const signal = resolveSignal(fast, slow);
-        if (signal !== lastSignal && config.verbose) {
-          console.log(
-            '[bot] signal-change',
-            JSON.stringify({
-              ts: Number(event.ts),
-              previous: lastSignal,
-              next: signal,
-            }),
-          );
-        }
-        lastSignal = signal;
-
-        const midStr = formatPrice(mid);
-
-        const openOrders = orders.listOpenOrders(account.id, config.symbol);
-        const existing = buildExistingOrder(openOrders[0]);
-
-        const baseBalance = accounts.getBalance(account.id, SYMBOL_CONFIG.base);
-        const quoteBalance = accounts.getBalance(
-          account.id,
-          SYMBOL_CONFIG.quote,
-        );
-        const riskContext: RiskContext = {
-          balances: { base: baseBalance, quote: quoteBalance },
-          qtyScale: SYMBOL_CONFIG.qtyScale,
-          makerFeeBps: FEE_CONFIG.makerBps,
-        };
-
-        let desired: OrderIntent | undefined;
-        if (signal !== 'FLAT') {
-          const price = applySpread(mid, config.spreadBps, signal);
-          const cappedQty = capQtyByBalance(
-            desiredQty,
-            price,
-            signal,
-            riskContext,
-          );
-          if (canPlace(signal, riskContext, cappedQty, price)) {
-            desired = {
-              side: signal,
-              price: formatPrice(price),
-              qty: formatQty(cappedQty),
-            };
-          }
-        }
-
-        const now = Number(event.ts);
-        const reconcileInput: Parameters<typeof reconcile>[0] = {
-          now,
-          minActionGapMs: MIN_ACTION_INTERVAL_MS,
-          ...(lastActionTs !== undefined ? { lastActionTs } : {}),
-          ...(desired ? { want: desired } : {}),
-          ...(existing ? { existing } : {}),
-        };
-        const { actions, nextActionTs } = reconcile(reconcileInput);
-
-        if (config.verbose) {
-          console.log(
-            '[bot] decision',
-            JSON.stringify({
-              ts: now,
-              mid: midStr,
-              signal,
-              desired,
-              existing,
-              actions: actions.map((action) => action.kind),
-            }),
-          );
-        }
-
-        if (actions.length === 0) {
-          return;
-        }
-
-        for (const action of actions) {
-          if (action.kind === 'cancel') {
-            orders.cancelOrder(action.orderId as unknown as OrderId);
-            metrics.onCancel();
-            if (ndjsonLogger) {
-              ndjsonLogger.write({
-                ts: now,
-                kind: 'action',
-                session: sessionId,
-                action: { type: 'cancel', orderId: action.orderId },
-              });
-            }
-            continue;
-          }
-          if (action.kind === 'replace') {
-            orders.cancelOrder(action.orderId as unknown as OrderId);
-            metrics.onCancel();
-            if (ndjsonLogger) {
-              ndjsonLogger.write({
-                ts: now,
-                kind: 'action',
-                session: sessionId,
-                action: {
-                  type: 'cancel',
-                  orderId: action.orderId,
-                  reason: 'replace',
-                },
-              });
-            }
-            const priceInt = toPriceInt(
-              action.intent.price,
-              SYMBOL_CONFIG.priceScale,
-            );
-            const qtyInt = toQtyInt(action.intent.qty, SYMBOL_CONFIG.qtyScale);
-            const placed = orders.placeOrder({
-              accountId: account.id,
-              symbol: config.symbol,
-              type: 'LIMIT',
-              side: action.intent.side,
-              price: priceInt,
-              qty: qtyInt,
-            });
-            metrics.onPlace();
-            if (ndjsonLogger) {
-              ndjsonLogger.write({
-                ts: now,
-                kind: 'action',
-                session: sessionId,
-                action: {
-                  type: 'place',
-                  mode: 'replace',
-                  orderId: String(placed.id),
-                  side: placed.side,
-                  price: action.intent.price,
-                  qty: action.intent.qty,
-                },
-              });
-            }
-            continue;
-          }
-          if (action.kind === 'place') {
-            const priceInt = toPriceInt(
-              action.intent.price,
-              SYMBOL_CONFIG.priceScale,
-            );
-            const qtyInt = toQtyInt(action.intent.qty, SYMBOL_CONFIG.qtyScale);
-            const placed = orders.placeOrder({
-              accountId: account.id,
-              symbol: config.symbol,
-              type: 'LIMIT',
-              side: action.intent.side,
-              price: priceInt,
-              qty: qtyInt,
-            });
-            metrics.onPlace();
-            if (ndjsonLogger) {
-              ndjsonLogger.write({
-                ts: now,
-                kind: 'action',
-                session: sessionId,
-                action: {
-                  type: 'place',
-                  orderId: String(placed.id),
-                  side: placed.side,
-                  price: action.intent.price,
-                  qty: action.intent.qty,
-                },
-              });
-            }
-          }
-        }
-
-        lastActionTs = nextActionTs;
-      },
-    });
-  } catch (err) {
-    replayError = err;
-  } finally {
-    queue.close();
-  }
-
-  try {
-    await executionTask;
-  } catch (err) {
-    if (!replayError) {
-      replayError = err;
+    if (config.ndjsonPath) {
+      ndjsonLogger = await createNdjsonLogger(config.ndjsonPath);
     }
-  }
 
-  if (replayError) {
-    throw replayError;
-  }
+    const desiredQty = toQtyInt(config.qty, SYMBOL_CONFIG.qtyScale);
+    const limits = config.limits;
+    const { clock } = buildClock(config.clock, config.speed);
 
-  const balances = accounts.getBalancesSnapshot(account.id);
-  const lastPrice = book.lastTrade ?? book.mid;
-  const finalizeParams: Parameters<typeof metrics.finalize>[0] = {
-    balances: balances as Record<string, Balances>,
-    baseCurrency: SYMBOL_CONFIG.base,
-    quoteCurrency: SYMBOL_CONFIG.quote,
-    priceScale: SYMBOL_CONFIG.priceScale,
-    qtyScale: SYMBOL_CONFIG.qtyScale,
-    initialQuote: quoteDepositRaw,
-    ...(lastPrice !== undefined ? { lastPrice } : {}),
-  };
-  const summary = metrics.finalize(finalizeParams);
-
-  if (ndjsonLogger) {
-    ndjsonLogger.write({
-      ts: Date.now(),
-      kind: 'summary',
-      session: sessionId,
-      summary,
+    const snapshotRiskContext = (): RiskContext => ({
+      balances: {
+        base: accounts.getBalance(account.id, SYMBOL_CONFIG.base),
+        quote: accounts.getBalance(account.id, SYMBOL_CONFIG.quote),
+      },
+      qtyScale: SYMBOL_CONFIG.qtyScale,
+      makerFeeBps: FEE_CONFIG.makerBps,
     });
-    await ndjsonLogger.close();
-  }
 
-  const payload = JSON.stringify(summary);
-  console.log(`BOT_OK ${payload}`);
+    const convertIntent = (
+      intent: OrderIntent,
+    ): {
+      priceInt: PriceInt;
+      qtyInt: QtyInt;
+    } => ({
+      priceInt: toPriceInt(intent.price, SYMBOL_CONFIG.priceScale),
+      qtyInt: toQtyInt(intent.qty, SYMBOL_CONFIG.qtyScale),
+    });
 
-  if (config.verbose && progress) {
-    const wallMs = Math.max(0, progress.wallLastMs - progress.wallStartMs);
-    const simMs =
-      progress.simStartTs !== undefined && progress.simLastTs !== undefined
-        ? Math.max(0, Number(progress.simLastTs) - Number(progress.simStartTs))
-        : 0;
-    console.log(
-      '[bot] replay',
-      JSON.stringify({ events: progress.eventsOut, wallMs, simMs }),
-    );
+    let replayError: unknown;
+    let progress: ReplayProgress | undefined;
+
+    try {
+      progress = await runReplay({
+        timeline,
+        clock,
+        limits: {
+          ...limits,
+        },
+        onEvent: async (event: MergedEvent) => {
+          queue.push(event);
+          updateBook(book, event);
+
+          if (!book.marketReady) {
+            if (!waitingForMarketLogged) {
+              console.log('[bot] waiting for market data');
+              waitingForMarketLogged = true;
+            }
+            return;
+          }
+
+          const mid = book.mid ?? book.lastTrade;
+          if (!mid) {
+            return;
+          }
+
+          const fast = updateEma(emaFast, mid);
+          const slow = updateEma(emaSlow, mid);
+          const signal = resolveSignal(fast, slow);
+          if (signal !== lastSignal && config.verbose) {
+            console.log(
+              '[bot] signal-change',
+              JSON.stringify({
+                ts: Number(event.ts),
+                previous: lastSignal,
+                next: signal,
+              }),
+            );
+          }
+          lastSignal = signal;
+
+          const midStr = formatPrice(mid);
+
+          const openOrders = orders.listOpenOrders(account.id, config.symbol);
+          const existing = buildExistingOrder(openOrders[0]);
+
+          const riskContext: RiskContext = snapshotRiskContext();
+
+          let desired: OrderIntent | undefined;
+          if (signal !== 'FLAT') {
+            const price = applySpread(mid, config.spreadBps, signal);
+            const cappedQty = capQtyByBalance(
+              desiredQty,
+              price,
+              signal,
+              riskContext,
+            );
+            if (canPlace(signal, riskContext, cappedQty, price)) {
+              desired = {
+                side: signal,
+                price: formatPrice(price),
+                qty: formatQty(cappedQty),
+              };
+            }
+          }
+
+          const now = Number(event.ts);
+          const reconcileInput: Parameters<typeof reconcile>[0] = {
+            now,
+            minActionGapMs: config.minActionGapMs,
+            replaceAsCancelPlace: config.replaceAsCancelPlace,
+            ...(lastActionSimTs !== undefined ? { lastActionSimTs } : {}),
+            ...(desired ? { want: desired } : {}),
+            ...(existing ? { existing } : {}),
+          };
+          const { actions, nextActionTs } = reconcile(reconcileInput);
+
+          if (config.verbose) {
+            console.log(
+              '[bot] decision',
+              JSON.stringify({
+                ts: now,
+                mid: midStr,
+                signal,
+                desired,
+                existing,
+                actions: actions.map((action) => action.kind),
+              }),
+            );
+          }
+
+          if (actions.length === 0) {
+            return;
+          }
+
+          let performedAction = false;
+
+          for (const action of actions) {
+            if (action.kind === 'cancel') {
+              orders.cancelOrder(action.orderId as unknown as OrderId);
+              metrics.onCancel();
+              performedAction = true;
+              if (ndjsonLogger) {
+                ndjsonLogger.write({
+                  ts: now,
+                  kind: 'action',
+                  session: sessionId,
+                  action: { type: 'cancel', orderId: action.orderId },
+                });
+              }
+              continue;
+            }
+
+            const { priceInt, qtyInt } = convertIntent(action.intent);
+            const logBlocked = (stage: 'place' | 'replace') => {
+              const reason =
+                action.intent.side === 'BUY'
+                  ? 'insufficient-quote'
+                  : 'insufficient-base';
+              console.warn(
+                '[bot] risk-blocked',
+                JSON.stringify({
+                  ts: now,
+                  stage,
+                  reason,
+                  side: action.intent.side,
+                  price: action.intent.price,
+                  qty: action.intent.qty,
+                }),
+              );
+            };
+
+            if (action.kind === 'replace') {
+              orders.cancelOrder(action.orderId as unknown as OrderId);
+              metrics.onCancel();
+              performedAction = true;
+              if (ndjsonLogger) {
+                ndjsonLogger.write({
+                  ts: now,
+                  kind: 'action',
+                  session: sessionId,
+                  action: {
+                    type: 'cancel',
+                    orderId: action.orderId,
+                    reason: 'replace',
+                  },
+                });
+              }
+              const postCancelContext = snapshotRiskContext();
+              if (
+                !canPlace(
+                  action.intent.side,
+                  postCancelContext,
+                  qtyInt,
+                  priceInt,
+                )
+              ) {
+                logBlocked('replace');
+                continue;
+              }
+              const placed = orders.placeOrder({
+                accountId: account.id,
+                symbol: config.symbol,
+                type: 'LIMIT',
+                side: action.intent.side,
+                price: priceInt,
+                qty: qtyInt,
+              });
+              metrics.onPlace();
+              performedAction = true;
+              if (ndjsonLogger) {
+                ndjsonLogger.write({
+                  ts: now,
+                  kind: 'action',
+                  session: sessionId,
+                  action: {
+                    type: 'place',
+                    mode: 'replace',
+                    orderId: String(placed.id),
+                    side: placed.side,
+                    price: action.intent.price,
+                    qty: action.intent.qty,
+                  },
+                });
+              }
+              continue;
+            }
+
+            if (action.kind === 'place') {
+              const context = snapshotRiskContext();
+              if (!canPlace(action.intent.side, context, qtyInt, priceInt)) {
+                logBlocked('place');
+                continue;
+              }
+              const placed = orders.placeOrder({
+                accountId: account.id,
+                symbol: config.symbol,
+                type: 'LIMIT',
+                side: action.intent.side,
+                price: priceInt,
+                qty: qtyInt,
+              });
+              metrics.onPlace();
+              performedAction = true;
+              if (ndjsonLogger) {
+                ndjsonLogger.write({
+                  ts: now,
+                  kind: 'action',
+                  session: sessionId,
+                  action: {
+                    type: 'place',
+                    orderId: String(placed.id),
+                    side: placed.side,
+                    price: action.intent.price,
+                    qty: action.intent.qty,
+                  },
+                });
+              }
+            }
+          }
+
+          if (performedAction) {
+            const effectiveTs = nextActionTs ?? now;
+            lastActionSimTs = effectiveTs;
+          }
+        },
+      });
+    } catch (err) {
+      replayError = err;
+    } finally {
+      queue.close();
+    }
+
+    try {
+      await executionTask;
+    } catch (err) {
+      if (!replayError) {
+        replayError = err;
+      }
+    }
+
+    if (replayError) {
+      throw replayError;
+    }
+
+    const balances = accounts.getBalancesSnapshot(account.id);
+    const lastPrice = book.lastTrade ?? book.mid;
+    const finalizeParams: Parameters<typeof metrics.finalize>[0] = {
+      balances: balances as Record<string, Balances>,
+      baseCurrency: SYMBOL_CONFIG.base,
+      quoteCurrency: SYMBOL_CONFIG.quote,
+      priceScale: SYMBOL_CONFIG.priceScale,
+      qtyScale: SYMBOL_CONFIG.qtyScale,
+      initialQuote: quoteDepositRaw,
+      ...(lastPrice !== undefined ? { lastPrice } : {}),
+    };
+    const summary = metrics.finalize(finalizeParams);
+
+    if (ndjsonLogger) {
+      ndjsonLogger.write({
+        ts: Date.now(),
+        kind: 'summary',
+        session: sessionId,
+        summary,
+      });
+    }
+
+    const payload = JSON.stringify(summary);
+    console.log(`BOT_OK ${payload}`);
+
+    if (config.verbose && progress) {
+      const wallMs = Math.max(0, progress.wallLastMs - progress.wallStartMs);
+      const simMs =
+        progress.simStartTs !== undefined && progress.simLastTs !== undefined
+          ? Math.max(
+              0,
+              Number(progress.simLastTs) - Number(progress.simStartTs),
+            )
+          : 0;
+      console.log(
+        '[bot] replay',
+        JSON.stringify({ events: progress.eventsOut, wallMs, simMs }),
+      );
+    }
+  } finally {
+    if (ndjsonLogger) {
+      await ndjsonLogger.close();
+      if (config.ndjsonPath && !config.keepNdjson) {
+        await cleanupNdjson(ndjsonLogger.path);
+      }
+    }
   }
 }
 

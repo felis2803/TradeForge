@@ -18,9 +18,10 @@ export type IntentAction =
 export interface ReconcileParams {
   want?: OrderIntent;
   existing?: ExistingOrderView;
-  lastActionTs?: number;
+  lastActionSimTs?: number;
   now: number;
   minActionGapMs: number;
+  replaceAsCancelPlace?: boolean;
 }
 
 export interface ReconcileResult {
@@ -36,11 +37,16 @@ function sameIntent(a?: OrderIntent, b?: OrderIntent): boolean {
 }
 
 export function reconcile(params: ReconcileParams): ReconcileResult {
-  const { want, existing, now, lastActionTs, minActionGapMs } = params;
-  if (
-    lastActionTs !== undefined &&
-    now - lastActionTs < Math.max(0, minActionGapMs)
-  ) {
+  const {
+    want,
+    existing,
+    now,
+    lastActionSimTs,
+    minActionGapMs,
+    replaceAsCancelPlace,
+  } = params;
+  const gap = Math.max(0, minActionGapMs);
+  if (lastActionSimTs !== undefined && now - lastActionSimTs < gap) {
     return { actions: [] };
   }
   if (!want && !existing) {
@@ -65,6 +71,15 @@ export function reconcile(params: ReconcileParams): ReconcileResult {
     return { actions: [] };
   }
   if (want.side !== existing.side) {
+    return {
+      actions: [
+        { kind: 'cancel', orderId: existing.id },
+        { kind: 'place', intent: want },
+      ],
+      nextActionTs: now,
+    };
+  }
+  if (replaceAsCancelPlace) {
     return {
       actions: [
         { kind: 'cancel', orderId: existing.id },
