@@ -16,7 +16,11 @@ import {
   type QtyInt,
   type SymbolId,
 } from '@tradeforge/core';
-import { buildDepthReader, buildTradesReader } from '../_shared/readers.js';
+import {
+  buildDepthReader,
+  buildTradesReader,
+  peekFirstTradePrice,
+} from '../_shared/readers.js';
 import { buildMerged } from '../_shared/merge.js';
 import { createLogger } from '../_shared/logging.js';
 import { createAccountWithDeposit } from '../_shared/accounts.js';
@@ -34,7 +38,141 @@ const SYMBOL_CONFIG = {
   qtyScale: 6,
 };
 
+const FALLBACK_TRIGGER_BELOW = '9000';
+const FALLBACK_TRIGGER_ABOVE = '11000';
+const AUTO_MAX_OFFSET_BELOW = toPriceInt('0.02', SYMBOL_CONFIG.priceScale);
+const AUTO_MAX_OFFSET_ABOVE = toPriceInt('0.40', SYMBOL_CONFIG.priceScale);
+
+type TriggerSource = 'env' | 'auto' | 'fallback';
+
+type TriggerResult = {
+  value: PriceInt;
+  source: TriggerSource;
+};
+
+type TriggerResolution = {
+  below: TriggerResult;
+  above: TriggerResult;
+  reference?: string;
+};
+
 const FEE_CONFIG = { makerBps: 0, takerBps: 0 };
+
+function ensurePositivePriceInt(value: bigint): PriceInt {
+  const normalized = value > 0n ? value : 1n;
+  return normalized as unknown as PriceInt;
+}
+
+function priceIntToBigInt(value: PriceInt): bigint {
+  return value as unknown as bigint;
+}
+
+async function resolveStopTriggers(
+  tradeFiles: string[],
+): Promise<TriggerResolution> {
+  const envBelow = process.env['TF_TRIGGER_BELOW']?.trim();
+  const envAbove = process.env['TF_TRIGGER_ABOVE']?.trim();
+
+  const parseEnv = (
+    raw: string | undefined,
+    label: string,
+  ): PriceInt | undefined => {
+    if (!raw) {
+      return undefined;
+    }
+    try {
+      return toPriceInt(raw, SYMBOL_CONFIG.priceScale);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`[triggers] ignoring ${label}: ${message}`);
+      return undefined;
+    }
+  };
+
+  let below = parseEnv(envBelow, 'TF_TRIGGER_BELOW');
+  let belowSource: TriggerSource | undefined = below ? 'env' : undefined;
+  let above = parseEnv(envAbove, 'TF_TRIGGER_ABOVE');
+  let aboveSource: TriggerSource | undefined = above ? 'env' : undefined;
+
+  let referencePrintable: string | undefined;
+
+  if (!below || !above) {
+    try {
+      const rawPrice = await peekFirstTradePrice(tradeFiles);
+      if (rawPrice !== undefined) {
+        const normalized = rawPrice.trim();
+        if (/^\d+$/.test(normalized)) {
+          const referenceInt = BigInt(normalized);
+          referencePrintable = fromPriceInt(
+            referenceInt as unknown as PriceInt,
+            SYMBOL_CONFIG.priceScale,
+          );
+          const onePercent = referenceInt / 100n;
+          const clampOffset = (offset: bigint, cap: PriceInt): bigint => {
+            const capInt = priceIntToBigInt(cap);
+            return offset > capInt ? capInt : offset;
+          };
+          if (!below) {
+            const offset = clampOffset(onePercent, AUTO_MAX_OFFSET_BELOW);
+            const adjusted = ensurePositivePriceInt(referenceInt + offset);
+            below = adjusted;
+            belowSource = 'auto';
+          }
+          if (!above) {
+            const offset = clampOffset(onePercent, AUTO_MAX_OFFSET_ABOVE);
+            const adjusted = ensurePositivePriceInt(referenceInt + offset);
+            above = adjusted;
+            aboveSource = 'auto';
+          }
+        } else if (!referencePrintable) {
+          referencePrintable = normalized;
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`[triggers] failed to read first trade price: ${message}`);
+    }
+  }
+
+  const applyFallback = (
+    current: PriceInt | undefined,
+    raw: string,
+  ): PriceInt => {
+    if (current) {
+      return current;
+    }
+    return toPriceInt(raw, SYMBOL_CONFIG.priceScale);
+  };
+
+  try {
+    below = applyFallback(below, FALLBACK_TRIGGER_BELOW);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`failed to resolve STOP_MARKET trigger: ${message}`);
+  }
+  if (!belowSource) {
+    belowSource = 'fallback';
+  }
+
+  try {
+    above = applyFallback(above, FALLBACK_TRIGGER_ABOVE);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`failed to resolve STOP_LIMIT trigger: ${message}`);
+  }
+  if (!aboveSource) {
+    aboveSource = 'fallback';
+  }
+
+  const result: TriggerResolution = {
+    below: { value: below, source: belowSource },
+    above: { value: above, source: aboveSource },
+  };
+  if (referencePrintable) {
+    result.reference = referencePrintable;
+  }
+  return result;
+}
 
 function splitFiles(value?: string): string[] {
   if (!value) return [];
@@ -162,6 +300,17 @@ async function main(): Promise<void> {
   const depth = buildDepthReader(depthFiles);
   const timeline = buildMerged(trades, depth);
 
+  const triggers = await resolveStopTriggers(tradesFiles);
+  if (triggers.reference) {
+    logger.info(`[triggers] reference trade price=${triggers.reference}`);
+  }
+  logger.info(
+    `[triggers] STOP_MARKET trigger=${formatPrice(triggers.below.value)} source=${triggers.below.source}`,
+  );
+  logger.info(
+    `[triggers] STOP_LIMIT trigger=${formatPrice(triggers.above.value)} source=${triggers.above.source}`,
+  );
+
   const state = new ExchangeState({
     symbols: { [SYMBOL as unknown as string]: SYMBOL_CONFIG },
     fee: FEE_CONFIG,
@@ -194,7 +343,7 @@ async function main(): Promise<void> {
   );
 
   const stopMarketQty = toQtyInt('0.020', SYMBOL_CONFIG.qtyScale);
-  const stopMarketTrigger = toPriceInt('27000.12', SYMBOL_CONFIG.priceScale);
+  const stopMarketTrigger = triggers.below.value;
   const stopMarket = orders.placeOrder({
     accountId: account.id,
     symbol: SYMBOL,
@@ -211,7 +360,7 @@ async function main(): Promise<void> {
 
   const stopLimitQty = toQtyInt('0.040', SYMBOL_CONFIG.qtyScale);
   const stopLimitPrice = toPriceInt('27000.45', SYMBOL_CONFIG.priceScale);
-  const stopLimitTrigger = toPriceInt('27000.50', SYMBOL_CONFIG.priceScale);
+  const stopLimitTrigger = triggers.above.value;
   const stopLimit = orders.placeOrder({
     accountId: account.id,
     symbol: SYMBOL,

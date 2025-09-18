@@ -40,9 +40,28 @@ join_url() {
   fi
 }
 
+extract_json_field() {
+  local body="$1"
+  local jq_filter="$2"
+  local label="$3"
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "jq is required to parse ${label}" >&2
+    return 1
+  fi
+  local value
+  value=$(printf '%s\n' "$body" | jq -er "${jq_filter} // empty" 2>/dev/null || true)
+  if [[ -z "$value" ]]; then
+    echo "${label} missing in response" >&2
+    printf '%s\n' "$body" >&2
+    return 1
+  fi
+  printf '%s' "$value"
+}
+
 create_account() {
   local response
   response=$(curl -sS -X POST "$(join_url '/v1/accounts')")
+  extract_json_field "$response" '.accountId' 'accountId' >/dev/null || return 1
   print_json "$response"
 }
 
@@ -80,6 +99,7 @@ place_limit() {
   response=$(curl -sS -X POST "$(join_url '/v1/orders')" \
     -H 'content-type: application/json' \
     -d "$payload")
+  extract_json_field "$response" '.id' 'order id' >/dev/null || return 1
   print_json "$response"
 }
 
@@ -101,6 +121,7 @@ place_stop_market() {
   response=$(curl -sS -X POST "$(join_url '/v1/orders')" \
     -H 'content-type: application/json' \
     -d "$payload")
+  extract_json_field "$response" '.id' 'order id' >/dev/null || return 1
   print_json "$response"
 }
 

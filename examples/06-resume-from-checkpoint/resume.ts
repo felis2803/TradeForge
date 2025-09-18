@@ -53,6 +53,30 @@ function normalizeBasename(value: string): string {
   return value;
 }
 
+function gatherNormalizedBasenames(values: Iterable<string>): Set<string> {
+  const normalized = new Set<string>();
+  for (const value of values) {
+    const base = basename(value);
+    normalized.add(base);
+    normalized.add(normalizeBasename(base));
+  }
+  return normalized;
+}
+
+function cursorFiles(cursor: CoreReaderCursor | undefined): string[] {
+  if (!cursor || !cursor.file) {
+    return [];
+  }
+  return [cursor.file];
+}
+
+function describeSet(values: Set<string>): string {
+  if (values.size === 0) {
+    return 'none';
+  }
+  return [...values].sort().join(', ');
+}
+
 function ensureMatchingInputs(
   kind: 'trades' | 'depth',
   cursor: CoreReaderCursor | undefined,
@@ -110,6 +134,24 @@ async function main(): Promise<void> {
   const depthPath = resolveDataPath('mini-depth.jsonl');
   const tradeFiles = [tradesPath];
   const depthFiles = [depthPath];
+
+  const checkpointInputs = [
+    ...cursorFiles(checkpoint.cursors.trades),
+    ...cursorFiles(checkpoint.cursors.depth),
+  ];
+  const providedInputs = [...tradeFiles, ...depthFiles];
+  const checkpointNormalized = gatherNormalizedBasenames(checkpointInputs);
+  const providedNormalized = gatherNormalizedBasenames(providedInputs);
+  const inputsMatch =
+    checkpointNormalized.size === providedNormalized.size &&
+    [...checkpointNormalized].every((value) => providedNormalized.has(value));
+  if (!inputsMatch) {
+    console.warn(
+      `[resume] WARNING: inputs differ (normalized basename). checkpoint=${describeSet(
+        checkpointNormalized,
+      )} provided=${describeSet(providedNormalized)}`,
+    );
+  }
 
   ensureMatchingInputs('trades', checkpoint.cursors.trades, tradeFiles);
   ensureMatchingInputs('depth', checkpoint.cursors.depth, depthFiles);

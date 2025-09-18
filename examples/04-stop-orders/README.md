@@ -15,10 +15,12 @@
 
 1. Укажем файлы сделок/стакана (скрипт автоматически подставит эти значения, если переменные окружения не заданы):
 
-   ```bash
-   export TF_TRADES_FILES="examples/_smoke/mini-trades.jsonl"
-   export TF_DEPTH_FILES="examples/_smoke/mini-depth.jsonl"
-   ```
+```bash
+export TF_TRADES_FILES="examples/_smoke/mini-trades.jsonl"
+export TF_DEPTH_FILES="examples/_smoke/mini-depth.jsonl"
+```
+
+> При необходимости задайте `TF_TRIGGER_BELOW`/`TF_TRIGGER_ABOVE` — строки с фиксированной точностью для `triggerPrice`.
 
 2. Собираем и запускаем сценарий:
 
@@ -42,9 +44,9 @@
 1. Загружает сделки и стакан через `buildTradesReader`/`buildDepthReader`, объединяет их в `buildMerged`.
 2. Создаёт `ExchangeState` с символом `BTCUSDT`, подключает `AccountsService` и `OrdersService`.
 3. Открывает счёт и зачисляет 0.100 BTC + 2000 USDT (строки автоматически конвертируются в `QtyInt`/`PriceInt`).
-4. Размещает два стоп-ордера:
-   - `STOP_MARKET SELL 0.020 BTC` с `triggerPrice=27000.12` и `triggerDirection=DOWN` — сработает, когда цена сделки опустится ниже порога.
-   - `STOP_LIMIT BUY 0.040 BTC @ 27000.45` с `triggerPrice=27000.50` и `triggerDirection=UP` — активируется при росте цены, дальше работает как лимитный ордер.
+4. Размещает два стоп-ордера. `triggerPrice` берётся из переменных окружения `TF_TRIGGER_BELOW`/`TF_TRIGGER_ABOVE`, а при их отсутствии вычисляется по первой сделке (≈±1 % с ограничением до ±0.02/0.40 USDT) с запасным значением `9000`/`11000`:
+   - `STOP_MARKET SELL 0.020 BTC` с `triggerDirection=DOWN` — сработает, когда цена сделки опустится ниже порога.
+   - `STOP_LIMIT BUY 0.040 BTC @ 27000.45` с `triggerDirection=UP` — активируется при росте цены, дальше работает как лимитный ордер.
 5. Итерация `executeTimeline` отслеживает активацию, логи `fill` и отменяет `STOP_LIMIT`, как только он частично исполнен (остаток остаётся `CANCELED`).
 6. Скрипт печатает финальные статусы для обоих ордеров и маркер `STOP_ORDERS_OK { placed: 2, triggered: 2, canceled: 1 }`.
 
