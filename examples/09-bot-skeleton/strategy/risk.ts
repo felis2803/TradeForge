@@ -1,5 +1,7 @@
 import type { Balances, PriceInt, QtyInt, Side } from '@tradeforge/core';
 
+import { isIntString, mulDivInt, toBigIntOr } from '../lib/fixed.js';
+
 export interface RiskContext {
   balances: {
     base: Balances;
@@ -10,11 +12,29 @@ export interface RiskContext {
 }
 
 function toRawQty(value: QtyInt): bigint {
-  return value as unknown as bigint;
+  const raw = value as unknown as bigint;
+  const str = raw.toString(10);
+  if (!isIntString(str)) {
+    throw new Error('qty must be an integer string');
+  }
+  return toBigIntOr(str, 0n);
 }
 
 function toRawPrice(value: PriceInt): bigint {
-  return value as unknown as bigint;
+  const raw = value as unknown as bigint;
+  const str = raw.toString(10);
+  if (!isIntString(str)) {
+    throw new Error('price must be an integer string');
+  }
+  return toBigIntOr(str, 0n);
+}
+
+function toBalanceFree(value: Balances): bigint {
+  const str = value.free.toString(10);
+  if (!isIntString(str)) {
+    return 0n;
+  }
+  return toBigIntOr(str, 0n);
 }
 
 function pow10(exp: number): bigint {
@@ -38,12 +58,23 @@ function calcTotalCost(
     return 0n;
   }
   const denom = pow10(qtyScale);
-  if (denom === 0n) {
+  const denomStr = denom.toString(10);
+  if (!isIntString(denomStr)) {
     return 0n;
   }
-  const notional = (priceRaw * qtyRaw) / denom;
-  const feeMultiplier = makerFeeBps > 0 ? BigInt(makerFeeBps) : 0n;
-  const fee = feeMultiplier === 0n ? 0n : (notional * feeMultiplier) / 10000n;
+  const priceStr = priceRaw.toString(10);
+  const qtyStr = qtyRaw.toString(10);
+  const notionalStr = mulDivInt(priceStr, qtyStr, denomStr);
+  const notional = toBigIntOr(notionalStr, 0n);
+  if (notional <= 0n) {
+    return 0n;
+  }
+  const feeBps = Math.max(0, makerFeeBps);
+  if (feeBps === 0) {
+    return notional;
+  }
+  const feeStr = mulDivInt(notionalStr, feeBps.toString(10), '10000');
+  const fee = toBigIntOr(feeStr, 0n);
   return notional + fee;
 }
 
@@ -58,7 +89,7 @@ export function capQtyByBalance(
     return clampQty(qtyRaw);
   }
   if (side === 'SELL') {
-    const available = ctx.balances.base.free;
+    const available = toBalanceFree(ctx.balances.base);
     if (available <= 0n) {
       return clampQty(0n);
     }
@@ -69,7 +100,7 @@ export function capQtyByBalance(
   if (priceRaw <= 0n) {
     return clampQty(0n);
   }
-  const availableQuote = ctx.balances.quote.free;
+  const availableQuote = toBalanceFree(ctx.balances.quote);
   if (availableQuote <= 0n) {
     return clampQty(0n);
   }
@@ -102,7 +133,7 @@ export function canPlace(
     return false;
   }
   if (side === 'SELL') {
-    return ctx.balances.base.free >= qtyRaw;
+    return toBalanceFree(ctx.balances.base) >= qtyRaw;
   }
   if (!price) {
     return false;
@@ -114,5 +145,5 @@ export function canPlace(
     ctx.qtyScale,
     ctx.makerFeeBps,
   );
-  return required > 0n && ctx.balances.quote.free >= required;
+  return required > 0n && toBalanceFree(ctx.balances.quote) >= required;
 }

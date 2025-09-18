@@ -33,8 +33,8 @@ function main(): void {
   const stderr = result.stderr ?? '';
 
   const printSnippet = (): void => {
-    const stdoutSnippet = stdout.slice(0, 600) || '<empty>';
-    const stderrSnippet = stderr.slice(0, 600) || '<empty>';
+    const stdoutSnippet = stdout.slice(0, 500) || '<empty>';
+    const stderrSnippet = stderr.slice(0, 500) || '<empty>';
     console.error('[examples/09-bot-skeleton] stdout snippet:', stdoutSnippet);
     console.error('[examples/09-bot-skeleton] stderr snippet:', stderrSnippet);
   };

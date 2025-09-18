@@ -14,15 +14,27 @@ node dist-examples/09-bot-skeleton/run.js
 
 Ожидаемый вывод: строка `BOT_OK { ... }` с полями `fills`, `fees`, `finalBalances`, `pnl`.
 
-## ENV (все строки)
+## ENV
 
-- `TF_SYMBOL=BTCUSDT` (по умолчанию)
-- `TF_TRADES_FILES` / `TF_DEPTH_FILES` — пути к JSONL-таймлайнам
-- `TF_SEED=42`
-- `TF_EMA_FAST=12`, `TF_EMA_SLOW=26`, `TF_SPREAD_BPS=5`
-- `TF_QTY="0.001"`
-- `TF_CLOCK=logical|accelerated|wall` (+ `TF_SPEED`), `TF_MAX_EVENTS`/`TF_MAX_SIM_MS`/`TF_MAX_WALL_MS`
-- `TF_VERBOSE=1`, `TF_NDJSON_PATH=/tmp/tf.bot.ndjson`
+| VAR                                                  | type       | default                             | meaning                             |
+| ---------------------------------------------------- | ---------- | ----------------------------------- | ----------------------------------- |
+| `TF_SYMBOL`                                          | string     | `BTCUSDT`                           | символ для торговли                 |
+| `TF_TRADES_FILES`                                    | csv/string | `examples/_smoke/mini-trades.jsonl` | список trade-таймлайнов             |
+| `TF_DEPTH_FILES`                                     | csv/string | `examples/_smoke/mini-depth.jsonl`  | список depth-таймлайнов             |
+| `TF_SEED`                                            | int        | `42`                                | seed для детерминированного PRNG    |
+| `TF_EMA_FAST` / `TF_EMA_SLOW`                        | int        | `12` / `26`                         | окна EMA                            |
+| `TF_SPREAD_BPS`                                      | int        | `5`                                 | спред в б.п. относительно mid       |
+| `TF_QTY`                                             | string     | `0.001`                             | желаемый объём заявки (fixed-point) |
+| `TF_CLOCK`                                           | enum       | `logical`                           | `logical` / `accelerated` / `wall`  |
+| `TF_SPEED`                                           | number     | –                                   | ускорение для `accelerated` clock   |
+| `TF_MAX_EVENTS` / `TF_MAX_SIM_MS` / `TF_MAX_WALL_MS` | int        | –                                   | лимиты реплея                       |
+| `TF_MIN_ACTION_MS`                                   | int        | `200`                               | анти-дребезг по сим-времени         |
+| `TF_REPLACE_AS_CANCEL_PLACE`                         | flag `0/1` | `0`                                 | форсить replace как cancel+place    |
+| `TF_VERBOSE`                                         | flag `0/1` | `0`                                 | расширенные логи решений и сделок   |
+| `TF_NDJSON_PATH`                                     | path       | –                                   | писать действия/сводку в NDJSON     |
+| `TF_KEEP_NDJSON`                                     | flag `0/1` | `0`                                 | сохранить NDJSON после завершения   |
+
+> Числовые значения передавайте строками: внутри SDK хранится `bigint` с масштабами `priceScale=5` и `qtyScale=6`.
 
 ## Что делает бот
 
@@ -37,11 +49,8 @@ node dist-examples/09-bot-skeleton/run.js
 ## NDJSON постобработка
 
 ```bash
-jq -c '{ts, kind, action, fill}' /tmp/tf.bot.ndjson | head
+TF_NDJSON_PATH="/tmp/tf.bot.ndjson" node dist-examples/09-bot-skeleton/run.js
+jq -r '.kind' /tmp/tf.bot.ndjson | sort | uniq -c
 ```
 
-Каждая строка — JSON с полями `ts`, `kind`, `action` (для действий бота) и `fill` (для исполнений).
-
-## Fixed-point
-
-Числовые значения передавайте строками; внутри используются `bigint` с масштабами `priceScale=5` и `qtyScale=6`.
+Каждая строка NDJSON содержит `ts`, `kind`, `action` и `fill`; удобно быстро посмотреть статистику по событиям через `jq`.
