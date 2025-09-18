@@ -1,30 +1,51 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { rmSync, statSync } from 'node:fs';
+import { dirname } from 'node:path';
 import process from 'node:process';
 
-const CHECKPOINT_PATH = '/tmp/tf.cp.json';
-
-function ensureMarker(output: string): void {
-  if (!output.includes('PAUSE_CP_OK')) {
+function parseCheckpointInfo(stdout: string): {
+  cpExists: boolean;
+  cpPath: string;
+} {
+  const markerMatch = stdout.match(/PAUSE_CP_OK\s+({.+?})/);
+  if (!markerMatch) {
     throw new Error('marker PAUSE_CP_OK not found in stdout');
+  }
+  const payload = markerMatch[1];
+  if (!payload) {
+    throw new Error('checkpoint marker payload missing');
+  }
+  try {
+    const parsed = JSON.parse(payload) as {
+      cpExists?: boolean;
+      cpPath?: string;
+    };
+    if (!parsed.cpPath || typeof parsed.cpPath !== 'string') {
+      throw new Error('checkpoint path missing in marker payload');
+    }
+    return { cpExists: Boolean(parsed.cpExists), cpPath: parsed.cpPath };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`failed to parse checkpoint info: ${message}`);
   }
 }
 
-function ensureCheckpoint(): void {
-  if (!existsSync(CHECKPOINT_PATH)) {
-    throw new Error(`checkpoint file not created at ${CHECKPOINT_PATH}`);
+function ensureCheckpoint(cpPath: string): void {
+  const stats = statSync(cpPath, { throwIfNoEntry: false });
+  if (!stats) {
+    throw new Error(`checkpoint file not created at ${cpPath}`);
+  }
+  if (stats.size <= 0) {
+    throw new Error(`checkpoint file at ${cpPath} is empty`);
   }
 }
 
 function main(): void {
-  if (existsSync(CHECKPOINT_PATH)) {
-    rmSync(CHECKPOINT_PATH);
-  }
-
   const result = spawnSync(
     'node',
     ['dist-examples/05-pause-auto-checkpoint/run.js'],
     {
+      env: { ...process.env, TF_KEEP_CP: '1' },
       encoding: 'utf8',
       stdio: 'pipe',
     },
@@ -39,16 +60,45 @@ function main(): void {
     throw new Error(`example exited with code ${result.status}${stderr}`);
   }
 
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+
+  if (stdout) {
+    process.stdout.write(stdout);
   }
 
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
+  if (stderr) {
+    process.stderr.write(stderr);
   }
 
-  ensureMarker(result.stdout ?? '');
-  ensureCheckpoint();
+  const info = parseCheckpointInfo(stdout);
+  if (!info.cpExists) {
+    throw new Error('PAUSE_CP_OK reported cpExists=false');
+  }
+  ensureCheckpoint(info.cpPath);
+
+  const savedMatches = stdout.match(/checkpoint saved/gi);
+  if (savedMatches && savedMatches.length > 1) {
+    console.warn(
+      `[examples/05-pause-auto-checkpoint] smoke warning: checkpoint saved logged ${savedMatches.length} times`,
+    );
+  }
+
+  console.log('EX05_CP_PATH', info.cpPath);
+
+  if (info.cpPath.includes('tf-cp-')) {
+    try {
+      rmSync(info.cpPath, { force: true });
+      const dir = dirname(info.cpPath);
+      rmSync(dir, { recursive: true, force: true });
+    } catch (err) {
+      console.warn(
+        `[examples/05-pause-auto-checkpoint] smoke warning: failed to cleanup ${info.cpPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   console.log('EX05_PAUSE_AUTO_CP_SMOKE_OK');
 }

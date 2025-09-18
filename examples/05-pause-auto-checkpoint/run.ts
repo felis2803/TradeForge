@@ -1,6 +1,7 @@
-import { existsSync, rmSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
+import { tmpdir } from 'node:os';
 import {
   ExchangeState,
   StaticMockOrderbook,
@@ -17,7 +18,6 @@ import { formatCheckpointSummary, makeCp } from '../_shared/checkpoint.js';
 
 const logger = createLogger({ prefix: '[examples/05-pause-auto-checkpoint]' });
 
-const CHECKPOINT_PATH = '/tmp/tf.cp.json';
 const SYMBOL = 'BTCUSDT' as SymbolId;
 
 const SYMBOL_CONFIG = {
@@ -40,6 +40,22 @@ function delay(ms: number): Promise<void> {
   });
 }
 
+function parseNumberEnv(key: string, fallback: number): number {
+  const raw = process.env[key];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function resolveCheckpointPath(): { path: string; tempDir?: string } {
+  const explicit = process.env['TF_CP_PATH'];
+  if (explicit && explicit.trim().length > 0) {
+    return { path: explicit.trim() };
+  }
+  const tempDir = mkdtempSync(join(tmpdir(), 'tf-cp-'));
+  return { path: resolve(tempDir, 'checkpoint.json'), tempDir };
+}
+
 function safeCursor<T>(readCursor: () => T): T | undefined {
   try {
     return readCursor();
@@ -54,10 +70,14 @@ function safeCursor<T>(readCursor: () => T): T | undefined {
 }
 
 async function main(): Promise<void> {
-  if (existsSync(CHECKPOINT_PATH)) {
-    rmSync(CHECKPOINT_PATH);
-    logger.info(`removed previous checkpoint at ${CHECKPOINT_PATH}`);
+  const { path: checkpointPath, tempDir } = resolveCheckpointPath();
+  const keepCheckpoint = process.env['TF_KEEP_CP'] === '1';
+
+  if (existsSync(checkpointPath)) {
+    rmSync(checkpointPath);
+    logger.info(`removed previous checkpoint at ${checkpointPath}`);
   }
+  logger.info(`checkpoint file will be saved to ${checkpointPath}`);
 
   const dataRoot = resolve(process.cwd(), 'examples', '_smoke');
   const tradesPath = resolve(dataRoot, 'mini-trades.jsonl');
@@ -69,8 +89,10 @@ async function main(): Promise<void> {
 
   const controller = createReplayController();
 
-  const resumeDelayMs = Number(process.env['TF_EXAMPLE_RESUME_DELAY'] ?? '300');
+  const resumeDelayMs = parseNumberEnv('TF_PAUSE_MS', 150);
   const slowdownMs = Number(process.env['TF_EXAMPLE_EVENT_DELAY'] ?? '120');
+  const cpIntervalEvents = parseNumberEnv('TF_CP_INTERVAL_EVENTS', 20);
+  const cpIntervalWallMs = parseNumberEnv('TF_CP_INTERVAL_WALL_MS', 500);
 
   let lastProgress: ReplayProgress | undefined;
   let lastEvent: MergedEvent | undefined;
@@ -83,9 +105,9 @@ async function main(): Promise<void> {
     pauseOnStart: true,
     logger,
     autoCp: {
-      savePath: CHECKPOINT_PATH,
-      cpIntervalEvents: 20,
-      cpIntervalWallMs: 500,
+      savePath: checkpointPath,
+      cpIntervalEvents,
+      cpIntervalWallMs,
       buildCheckpoint: async () => {
         const tradesCursor = safeCursor(() => trades.currentCursor());
         const depthCursor = safeCursor(() => depth.currentCursor());
@@ -142,14 +164,39 @@ async function main(): Promise<void> {
 
   logger.info(`replay finished: processed ${progress.eventsOut} events`);
 
-  const checkpointExists = existsSync(CHECKPOINT_PATH);
+  const checkpointExists = existsSync(checkpointPath);
   if (checkpointExists) {
-    logger.info(`checkpoint file saved at ${CHECKPOINT_PATH}`);
+    logger.info(`checkpoint file saved at ${checkpointPath}`);
   } else {
-    logger.warn(`checkpoint file not found at ${CHECKPOINT_PATH}`);
+    logger.warn(`checkpoint file not found at ${checkpointPath}`);
   }
 
-  console.log('PAUSE_CP_OK', { cpExists: checkpointExists });
+  const summary = { cpExists: checkpointExists, cpPath: checkpointPath };
+  console.log('PAUSE_CP_OK', JSON.stringify(summary));
+
+  if (checkpointExists && !keepCheckpoint) {
+    try {
+      rmSync(checkpointPath);
+      logger.info(`removed checkpoint at ${checkpointPath}`);
+    } catch (err) {
+      logger.warn(
+        `failed to remove checkpoint at ${checkpointPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    if (tempDir) {
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+      } catch (err) {
+        logger.debug(
+          `failed to remove temp checkpoint dir ${tempDir}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+  }
 }
 
 main().catch((err) => {

@@ -96,7 +96,18 @@ function createAsyncEventQueue<T>(): AsyncEventQueue<T> {
 
 const logger = createLogger({ prefix: '[examples/03-accounts-and-orders]' });
 
-const SYMBOL: SymbolId = 'BTCUSDT' as SymbolId;
+const DEFAULT_SYMBOL = 'BTCUSDT';
+
+function resolveSymbol(): SymbolId {
+  const raw = process.env['TF_SYMBOL'];
+  const value =
+    typeof raw === 'string' && raw.trim().length > 0
+      ? raw.trim()
+      : DEFAULT_SYMBOL;
+  return value as SymbolId;
+}
+
+const SYMBOL: SymbolId = resolveSymbol();
 const SYMBOL_CONFIG = {
   base: 'BTC',
   quote: 'USDT',
@@ -115,6 +126,131 @@ function formatQty(value: QtyInt): string {
 
 function formatPrice(value: PriceInt): string {
   return fromPriceInt(value, SYMBOL_CONFIG.priceScale);
+}
+
+function parseEnvString(key: string): string | undefined {
+  const raw = process.env[key];
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+async function detectFirstTradePrice(
+  files: string[],
+): Promise<{ price: PriceInt; printable: string } | undefined> {
+  try {
+    const reader = buildTradesReader(files);
+    const iterator = reader[Symbol.asyncIterator]();
+    try {
+      const { value, done } = await iterator.next();
+      if (!done && value?.payload?.price) {
+        const price = value.payload.price;
+        return {
+          price,
+          printable: fromPriceInt(price, SYMBOL_CONFIG.priceScale),
+        };
+      }
+    } finally {
+      if (typeof iterator.return === 'function') {
+        await iterator.return();
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(`failed to inspect trades for reference price: ${message}`);
+  }
+  return undefined;
+}
+
+function computePriceBand(
+  raw: PriceInt,
+  multiplier: bigint,
+  divisor: bigint,
+): string {
+  const value = raw as unknown as bigint;
+  const scaled = (value * multiplier) / divisor;
+  const adjusted = scaled > 0n ? scaled : 1n;
+  return fromPriceInt(
+    adjusted as unknown as PriceInt,
+    SYMBOL_CONFIG.priceScale,
+  );
+}
+
+async function resolveOrderPrices(tradeFiles: string[]): Promise<{
+  buy: string;
+  sell: string;
+  source: 'env' | 'auto' | 'fallback';
+  reference?: string;
+}> {
+  const envBuy = parseEnvString('TF_BUY_PRICE');
+  const envSell = parseEnvString('TF_SELL_PRICE');
+
+  if (envBuy && envSell) {
+    return { buy: envBuy, sell: envSell, source: 'env' };
+  }
+
+  const reference = await detectFirstTradePrice(tradeFiles);
+  let buy = envBuy;
+  let sell = envSell;
+  let source: 'env' | 'auto' | 'fallback' = 'env';
+
+  if (reference) {
+    if (!buy) {
+      buy = computePriceBand(reference.price, 99n, 100n);
+    }
+    if (!sell) {
+      sell = computePriceBand(reference.price, 101n, 100n);
+    }
+    source = 'auto';
+  }
+
+  const finalBuy = buy ?? '10000';
+  const finalSell = sell ?? '11000';
+  if (!buy || !sell) {
+    source = reference ? 'auto' : 'fallback';
+  }
+
+  const result: {
+    buy: string;
+    sell: string;
+    source: 'env' | 'auto' | 'fallback';
+    reference?: string;
+  } = {
+    buy: finalBuy,
+    sell: finalSell,
+    source,
+  };
+  if (reference?.printable) {
+    result.reference = reference.printable;
+  }
+  return result;
+}
+
+function fractionOfQty(
+  value: QtyInt,
+  numerator: bigint,
+  denominator: bigint,
+): QtyInt {
+  const raw = value as unknown as bigint;
+  if (raw <= 0n) {
+    return value;
+  }
+  let result = (raw * numerator) / denominator;
+  if (result <= 0n) {
+    result = 1n;
+  }
+  if (result > raw) {
+    result = raw;
+  }
+  return result as unknown as QtyInt;
+}
+
+function deriveRestingBuyPrice(buyPrice: PriceInt): PriceInt {
+  const raw = buyPrice as unknown as bigint;
+  const delta = raw / 1000n;
+  const adjusted = raw - (delta > 0n ? delta : 1n);
+  const final = adjusted > 0n ? adjusted : raw;
+  return final as unknown as PriceInt;
 }
 
 function formatBalances(
@@ -173,8 +309,29 @@ function resolveInputFiles(kind: 'trades' | 'depth'): string[] {
 
 async function main(): Promise<void> {
   logger.info('preparing merged timeline (trades + depth)');
-  const trades = buildTradesReader(resolveInputFiles('trades'));
-  const depth = buildDepthReader(resolveInputFiles('depth'));
+  const tradesFiles = resolveInputFiles('trades');
+  const depthFiles = resolveInputFiles('depth');
+
+  const {
+    buy: buyPriceStr,
+    sell: sellPriceStr,
+    source,
+    reference,
+  } = await resolveOrderPrices(tradesFiles);
+
+  const qtyStr = parseEnvString('TF_QTY') ?? '0.001';
+  const orderParamsLog = {
+    symbol: SYMBOL as unknown as string,
+    qty: qtyStr,
+    buy: buyPriceStr,
+    sell: sellPriceStr,
+    source,
+    ...(reference ? { reference } : {}),
+  };
+  logger.info(`resolved order params ${JSON.stringify(orderParamsLog)}`);
+
+  const trades = buildTradesReader(tradesFiles);
+  const depth = buildDepthReader(depthFiles);
   const timeline = buildMerged(trades, depth);
 
   const state = new ExchangeState({
@@ -202,8 +359,8 @@ async function main(): Promise<void> {
     `created account ${accountIdStr} and deposited ${formatPrice(deposit)} ${SYMBOL_CONFIG.quote}`,
   );
 
-  const buyQty = toQtyInt('0.030', SYMBOL_CONFIG.qtyScale);
-  const buyPrice = toPriceInt('27000.40', SYMBOL_CONFIG.priceScale);
+  const buyQty = toQtyInt(qtyStr, SYMBOL_CONFIG.qtyScale);
+  const buyPrice = toPriceInt(buyPriceStr, SYMBOL_CONFIG.priceScale);
   const buyOrder = orders.placeOrder({
     accountId: account.id,
     symbol: SYMBOL,
@@ -216,11 +373,16 @@ async function main(): Promise<void> {
     `placed BUY order ${String(buyOrder.id)} -> qty=${formatQty(buyQty)}, price=${formatPrice(buyPrice)} ${SYMBOL_CONFIG.quote}`,
   );
 
-  const targetSellQty = toQtyInt('0.015', SYMBOL_CONFIG.qtyScale);
+  const targetSellQty = fractionOfQty(buyQty, 1n, 2n);
   const targetSellQtyRaw = targetSellQty as unknown as bigint;
-  const sellPrice = toPriceInt('27000.55', SYMBOL_CONFIG.priceScale);
-  const restingBuyPrice = toPriceInt('26999.50', SYMBOL_CONFIG.priceScale);
-  const restingBuyQty = toQtyInt('0.005', SYMBOL_CONFIG.qtyScale);
+  const sellPrice = toPriceInt(sellPriceStr, SYMBOL_CONFIG.priceScale);
+  const restingBuyPrice = deriveRestingBuyPrice(buyPrice);
+  let restingBuyQty = fractionOfQty(buyQty, 1n, 6n);
+  const restingBuyQtyRawInitial = restingBuyQty as unknown as bigint;
+  if (restingBuyQtyRawInitial >= targetSellQtyRaw) {
+    const adjustedRaw = targetSellQtyRaw > 1n ? targetSellQtyRaw - 1n : 1n;
+    restingBuyQty = adjustedRaw as unknown as QtyInt;
+  }
 
   let sellOrder: Order | undefined;
   let restingBuyOrder: Order | undefined;
@@ -305,17 +467,12 @@ async function main(): Promise<void> {
     throw replayError;
   }
 
-  if (restingBuyOrder) {
-    logger.info(`canceling resting order ${String(restingBuyOrder.id)}`);
-    orders.cancelOrder(restingBuyOrder.id);
-  }
-
   const openOrders = orders.listOpenOrders(account.id, SYMBOL);
   if (openOrders.length > 0) {
     for (const order of openOrders) {
-      if (!restingBuyOrder || order.id !== restingBuyOrder.id) {
-        logger.info(`canceling leftover order ${String(order.id)}`);
-      }
+      logger.info(
+        `canceling open order ${String(order.id)} status=${order.status}`,
+      );
       orders.cancelOrder(order.id);
     }
   }

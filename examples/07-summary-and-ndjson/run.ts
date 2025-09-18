@@ -1,10 +1,10 @@
 import { once } from 'node:events';
-import { createWriteStream, existsSync } from 'node:fs';
-import { readFile, rm } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { createWriteStream, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { finished } from 'node:stream/promises';
+import { tmpdir } from 'node:os';
 import {
   AccountsService,
   ExchangeState,
@@ -16,6 +16,7 @@ import {
   toPriceInt,
   toQtyInt,
   type MergedEvent,
+  type Order,
   type ReplayProgress,
   type PriceInt,
   type QtyInt,
@@ -137,7 +138,7 @@ function buildSummary(
   }>;
   balances: Record<string, Record<string, { free: bigint; locked: bigint }>>;
 } {
-  const ordersList = Array.from(state.orders.values());
+  const ordersList = Array.from(state.orders.values()) as Order[];
   const totals: SummaryTotals = {
     orders: {
       total: ordersList.length,
@@ -201,7 +202,6 @@ function buildSummary(
 
 const logger = createLogger({ prefix: '[examples/07-summary-and-ndjson]' });
 
-const OUTPUT_FILE = '/tmp/tf.reports.ndjson';
 const SYMBOL: SymbolId = 'BTCUSDT' as SymbolId;
 const SYMBOL_CONFIG = {
   base: 'BTC',
@@ -224,6 +224,17 @@ function formatQty(value: QtyInt): string {
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
+
+  const { path: outputPath, tempDir } = (() => {
+    const explicit = process.env['TF_NDJSON_PATH'];
+    if (explicit && explicit.trim().length > 0) {
+      return { path: explicit.trim() };
+    }
+    const dir = mkdtempSync(join(tmpdir(), 'tf-ndjson-'));
+    return { path: resolve(dir, 'reports.ndjson'), tempDir: dir };
+  })();
+  const keepNdjson = process.env['TF_KEEP_NDJSON'] === '1';
+  logger.info(`NDJSON output path resolved to ${outputPath}`);
 
   function resolveFixture(file: string): string {
     const local = resolve(here, '../_smoke', file);
@@ -284,8 +295,11 @@ async function main(): Promise<void> {
     )} price=${formatPrice(orderPrice)} ${SYMBOL_CONFIG.quote}`,
   );
 
-  await rm(OUTPUT_FILE, { force: true });
-  const ndjsonStream = createWriteStream(OUTPUT_FILE, { encoding: 'utf8' });
+  rmSync(outputPath, { force: true });
+  const ndjsonStream = createWriteStream(outputPath, {
+    encoding: 'utf8',
+    flags: 'w',
+  });
   const queue = createAsyncEventQueue<MergedEvent>();
   let rowsWritten = 0;
 
@@ -305,7 +319,7 @@ async function main(): Promise<void> {
     } finally {
       ndjsonStream.end();
     }
-    await finished(ndjsonStream);
+    await once(ndjsonStream, 'close');
     return rowsWritten;
   })();
 
@@ -344,7 +358,7 @@ async function main(): Promise<void> {
     throw new Error('replay completed without progress stats');
   }
 
-  logger.info(`execution reports saved to ${OUTPUT_FILE} (${ndjsonRows} rows)`);
+  logger.info(`execution reports saved to ${outputPath} (${ndjsonRows} rows)`);
 
   const summary = {
     ...buildSummary(state, accounts),
@@ -360,7 +374,7 @@ async function main(): Promise<void> {
   console.log('SUMMARY_AGGREGATED');
   console.log(JSON.stringify(summaryPrintable, null, 2));
 
-  const fileContent = await readFile(OUTPUT_FILE, 'utf8');
+  const fileContent = await readFile(outputPath, 'utf8');
   const rows = fileContent
     .split('\n')
     .map((line) => line.trim())
@@ -375,12 +389,31 @@ async function main(): Promise<void> {
       ? Math.max(0, Number(progress.simLastTs) - Number(progress.simStartTs))
       : 0;
 
-  console.log('SUMMARY_NDJSON_OK', {
-    rows,
-    eventsOut: progress.eventsOut,
-    wallMs,
-    simMs,
-  });
+  console.log(
+    'SUMMARY_NDJSON_OK',
+    JSON.stringify({
+      rows,
+      eventsOut: progress.eventsOut,
+      wallMs,
+      simMs,
+      ndjsonPath: outputPath,
+    }),
+  );
+
+  if (!keepNdjson) {
+    try {
+      rmSync(outputPath, { force: true });
+      if (tempDir) {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch (err) {
+      logger.warn(
+        `failed to cleanup NDJSON at ${outputPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 }
 
 main().catch((err) => {
