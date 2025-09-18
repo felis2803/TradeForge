@@ -13,12 +13,12 @@
 
 ```mermaid
 flowchart LR
-  A[Binance historical files (trades, depth)] --> B[Readers (JSONL cursor)]
-  B --> C[Deterministic merge (k-way, tie-break)]
-  C --> D[Engine (orders, fees, STOP, maker/taker)]
-  D --> E[ExchangeState (balances, orders)]
-  E --> F[Checkpoint v1 (state+engine+cursors)]
-  D --> G[CLI/REST outputs (summary/NDJSON, responses)]
+  A["Binance historical files (trades, depth)"] --> B["Readers (JSONL cursor)"]
+  B --> C["Deterministic merge (k-way, tie-break)"]
+  C --> D["Engine (orders, fees, STOP, maker/taker)"]
+  D --> E["ExchangeState (balances, orders)"]
+  E --> F["Checkpoint v1 (state+engine+cursors)"]
+  D --> G["CLI/REST outputs (summary/NDJSON, responses)"]
 ```
 
 Диаграмма отражает conservative execution model (MVP-1), где исполнение идёт только по TRADES. В будущих версиях появится режим full-conformance, учитывающий влияние ордеров на поток и глубину ордербука.
