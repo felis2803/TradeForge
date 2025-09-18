@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { tmpdir } from 'node:os';
@@ -187,7 +187,13 @@ async function main(): Promise<void> {
     }
     if (tempDir) {
       try {
-        rmSync(tempDir, { recursive: true, force: true });
+        if (existsSync(tempDir)) {
+          const contents = readdirSync(tempDir);
+          if (contents.length === 0) {
+            rmSync(tempDir, { recursive: true });
+            logger.info(`removed checkpoint temp dir ${tempDir}`);
+          }
+        }
       } catch (err) {
         logger.debug(
           `failed to remove temp checkpoint dir ${tempDir}: ${
