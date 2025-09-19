@@ -13,6 +13,24 @@ pnpm --filter @tradeforge/cli dev
 pnpm --filter @tradeforge/cli dev -- --version
 ```
 
+## Reusable CI workflow
+
+Проект использует переиспользуемый workflow `.github/workflows/ci-reusable.yml`. Вы можете настраивать матрицу через inputs в `.github/workflows/ci.yml`:
+
+```yaml
+jobs:
+  main:
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      node_versions: '["18.x","20.x"]'
+      schemas: '["v1","v2"]'
+      allow_v2_failure: true
+      working_directory: '.'
+```
+
+> Проект использует **Corepack**: версия pnpm берётся из `package.json` (`packageManager`).
+> Локально выполните `corepack enable`, чтобы гарантировать ту же версию, что и в CI.
+
 ## Mini fixtures & jq scripts (for CI)
 
 - **Датасеты:** `datasets/mini-fixtures/{flat,trend,vol}` — используются в CI для быстрых, детерминированных прогонов.

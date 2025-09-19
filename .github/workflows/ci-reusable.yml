@@ -1,0 +1,67 @@
+name: Reusable CI (build & test)
+
+on:
+  workflow_call:
+    inputs:
+      node_versions:
+        description: 'Node versions (JSON array)'
+        required: false
+        type: string
+        default: '["18.x","20.x"]'
+      schemas:
+        description: 'Schema matrix (JSON array)'
+        required: false
+        type: string
+        default: '["v1"]'
+      allow_v2_failure:
+        description: 'Treat SCHEMA=v2 as non-blocking'
+        required: false
+        type: boolean
+        default: true
+      working_directory:
+        description: 'Working directory for install/build/test'
+        required: false
+        type: string
+        default: '.'
+
+jobs:
+  build-and-test:
+    name: Node ${{ matrix.node }} / Schema ${{ matrix.schema }}
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ inputs.allow_v2_failure && matrix.schema == 'v2' }}
+    env:
+      SCHEMA: ${{ matrix.schema }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJson(inputs.node_versions) }}
+        schema: ${{ fromJson(inputs.schemas) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'pnpm'
+          cache-dependency-path: ${{ format('{0}/pnpm-lock.yaml', inputs.working_directory) }}
+
+      - name: Enable Corepack (use workspace pnpm version)
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: ${{ inputs.working_directory }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: ${{ inputs.working_directory }}
+        run: pnpm -w run build
+
+      - name: Test
+        working-directory: ${{ inputs.working_directory }}
+        run: pnpm -w run test
+
+      - name: Soft-fail note for schema v2
+        if: ${{ inputs.allow_v2_failure && matrix.schema == 'v2' }}
+        run: echo 'SCHEMA=v2 run is marked as non-blocking (allowed failure).'
