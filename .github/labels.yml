@@ -1,0 +1,9 @@
+- name: schema:v2
+  color: '9B59B6'
+  description: 'Trigger SCHEMA=v2 CI pipeline'
+- name: area:schemas
+  color: '1ABC9C'
+- name: area:engine
+  color: 'F39C12'
+- name: breaking-change
+  color: 'E74C3C'
