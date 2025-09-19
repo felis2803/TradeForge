@@ -36,6 +36,9 @@ jobs:
       working_directory: '.'
 ```
 
+> Проект использует **Corepack**: версия pnpm берётся из `package.json` (`packageManager`).
+> Локально выполните `corepack enable`, чтобы гарантировать ту же версию, что и в CI.
+
 ## REST service
 
 ## CI
