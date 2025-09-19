@@ -6,7 +6,7 @@
   "scripts": {
     "build": "pnpm run examples:build",
     "build:packages": "pnpm -r --filter \"./packages/*\" run build",
-    "build:examples": "tsc -p tsconfig.examples.json",
+    "build:examples": "pnpm -r --filter \"./examples/*\" run build",
     "build:schemas": "pnpm --filter @tradeforge/schemas run build",
     "build:validation": "pnpm --filter @tradeforge/validation run build",
     "clean": "pnpm -r run clean",
@@ -17,7 +17,7 @@
     "test:validation": "pnpm --filter @tradeforge/validation run test",
     "typecheck": "pnpm -r run typecheck",
     "prepare": "husky install",
-    "examples:build": "pnpm run build:packages && pnpm run build:examples",
+    "examples:build": "node ./scripts/run-examples-build.mjs",
     "examples:lint": "eslint \"examples/**/*.{ts,tsx,js,md}\"",
     "examples:run": "node --enable-source-maps examples/_shared/bin/run-scenario.ts",
     "examples:ex01": "node dist-examples/01-basic-replay/run.js",

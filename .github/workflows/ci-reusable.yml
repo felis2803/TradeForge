@@ -77,8 +77,18 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
         run: pnpm install --frozen-lockfile
 
+      - name: Build packages
+        working-directory: ${{ inputs.working_directory }}
+        run: pnpm -w run build:packages
+
+      - name: 'Sanity: resolve validation'
+        working-directory: ${{ inputs.working_directory }}
+        run: node -e "console.log(require.resolve('@tradeforge/validation'))"
+
       - name: Build packages and examples
         working-directory: ${{ inputs.working_directory }}
+        env:
+          TRADEFORGE_SKIP_PACKAGES_BUILD: '1'
         run: pnpm -w run examples:build
 
       - name: Test
