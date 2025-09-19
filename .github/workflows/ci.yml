@@ -5,19 +5,39 @@ on:
   pull_request:
 
 jobs:
-  build:
+  build-and-test:
+    name: Node ${{ matrix.node }} · schema ${{ matrix.schema }}
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        node: [22]
+        node: ['18.x', '20.x']
+        schema: ['v1']
+        include:
+          - node: '20.x'
+            schema: 'v2'
+            allow_failure: true
+    continue-on-error: ${{ matrix.allow_failure || false }}
+    if: ${{ matrix.schema == 'v1' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'schema:v2')) }}
+    env:
+      SCHEMA: ${{ matrix.schema }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: 'pnpm'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm lint
-      - run: pnpm test -- --coverage
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Lint
+        run: pnpm lint
+      - name: Test
+        run: pnpm test -- --coverage
+      - name: Mark schema v2 run as optional
+        if: ${{ matrix.schema == 'v2' }}
+        run: echo 'SCHEMA v2 run completed (non-blocking)'
