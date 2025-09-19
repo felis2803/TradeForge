@@ -13,6 +13,8 @@ pnpm --filter @tradeforge/cli dev
 pnpm --filter @tradeforge/cli dev -- --version
 ```
 
+<<<<<<< HEAD
+
 ## Mini fixtures & jq scripts (for CI)
 
 - **Датасеты:** `datasets/mini-fixtures/{flat,trend,vol}` — используются в CI для быстрых, детерминированных прогонов.
@@ -20,6 +22,10 @@ pnpm --filter @tradeforge/cli dev -- --version
   ```bash
   jq -f scripts/jq/summary-v1.jq logs/v1/orders.ndjson
   ```
+
+=======
+
+> > > > > > > 1e62c35e02df272167ec1536177a49ec1e1a0a7f
 
 ## Reusable CI workflow
 
