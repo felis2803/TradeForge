@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "@tradeforge/schemas/v1/metrics.schema.json",
+  "title": "metrics.v1",
+  "type": "object",
+  "required": ["ts", "name"],
+  "properties": {
+    "ts": { "type": ["integer", "string"] },
+    "name": { "type": "string", "minLength": 1 },
+    "value": { "type": ["number", "integer", "string", "null"] },
+    "labels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "integer", "boolean"]
+      }
+    }
+  },
+  "additionalProperties": false
+}

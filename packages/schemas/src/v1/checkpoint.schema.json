@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "@tradeforge/schemas/v1/checkpoint.schema.json",
+  "title": "checkpoint.v1",
+  "type": "object",
+  "required": [
+    "version",
+    "createdAtMs",
+    "meta",
+    "cursors",
+    "merge",
+    "engine",
+    "state"
+  ],
+  "$defs": {
+    "cursor": {
+      "type": "object",
+      "required": ["file", "recordIndex"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "entry": { "type": "string" },
+        "recordIndex": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^\\\\d+$" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "version": { "type": ["integer", "string"], "enum": [1, "1"] },
+    "createdAtMs": {
+      "anyOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "string", "pattern": "^\\\\d+$" }
+      ]
+    },
+    "meta": {
+      "type": "object",
+      "required": ["symbol"],
+      "properties": {
+        "symbol": { "type": "string", "minLength": 1 },
+        "note": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "cursors": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/cursor" }
+    },
+    "merge": {
+      "type": "object",
+      "properties": {
+        "nextSourceOnEqualTs": {
+          "type": "string",
+          "enum": ["DEPTH", "TRADES"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "engine": { "type": "object" },
+    "state": { "type": "object" }
+  },
+  "additionalProperties": false
+}

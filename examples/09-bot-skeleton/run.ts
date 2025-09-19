@@ -28,6 +28,11 @@ import {
   type SimClock,
   type SymbolId,
 } from '@tradeforge/core';
+import {
+  ajv as validationAjv,
+  validateLogV1,
+  type LogEntryV1,
+} from '@tradeforge/validation';
 
 import { createAccountWithDeposit } from '../_shared/accounts.js';
 import { buildMerged } from '../_shared/merge.js';
@@ -78,6 +83,23 @@ interface NdjsonLogger {
   write(entry: unknown): void;
   close(): Promise<void>;
   readonly path: string;
+}
+
+type ValidationErrors = Parameters<typeof validationAjv.errorsText>[0];
+
+function warnSchema(kind: string, errors: ValidationErrors): void {
+  if (!errors || errors.length === 0) {
+    return;
+  }
+  const message = validationAjv.errorsText(errors, { separator: '; ' });
+  console.warn(`[bot ndjson] ${kind} validation failed: ${message}`);
+}
+
+function writeLogEntry(logger: NdjsonLogger, entry: LogEntryV1): void {
+  if (!validateLogV1(entry)) {
+    warnSchema('log', validateLogV1.errors);
+  }
+  logger.write(entry);
 }
 
 interface BotConfig {
@@ -486,7 +508,7 @@ async function main(): Promise<void> {
           );
         }
         if (report.fill && ndjsonLogger) {
-          ndjsonLogger.write({
+          writeLogEntry(ndjsonLogger, {
             ts: Number(report.ts ?? 0),
             kind: 'fill',
             session: sessionId,
@@ -637,7 +659,7 @@ async function main(): Promise<void> {
               metrics.onCancel();
               performedAction = true;
               if (ndjsonLogger) {
-                ndjsonLogger.write({
+                writeLogEntry(ndjsonLogger, {
                   ts: now,
                   kind: 'action',
                   session: sessionId,
@@ -671,7 +693,7 @@ async function main(): Promise<void> {
               metrics.onCancel();
               performedAction = true;
               if (ndjsonLogger) {
-                ndjsonLogger.write({
+                writeLogEntry(ndjsonLogger, {
                   ts: now,
                   kind: 'action',
                   session: sessionId,
@@ -705,7 +727,7 @@ async function main(): Promise<void> {
               metrics.onPlace();
               performedAction = true;
               if (ndjsonLogger) {
-                ndjsonLogger.write({
+                writeLogEntry(ndjsonLogger, {
                   ts: now,
                   kind: 'action',
                   session: sessionId,
@@ -739,7 +761,7 @@ async function main(): Promise<void> {
               metrics.onPlace();
               performedAction = true;
               if (ndjsonLogger) {
-                ndjsonLogger.write({
+                writeLogEntry(ndjsonLogger, {
                   ts: now,
                   kind: 'action',
                   session: sessionId,
@@ -793,7 +815,7 @@ async function main(): Promise<void> {
     const summary = metrics.finalize(finalizeParams);
 
     if (ndjsonLogger) {
-      ndjsonLogger.write({
+      writeLogEntry(ndjsonLogger, {
         ts: Date.now(),
         kind: 'summary',
         session: sessionId,

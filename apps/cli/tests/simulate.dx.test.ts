@@ -8,7 +8,7 @@ const deserializeExchangeStateMock = jest.fn();
 const makeCheckpointV1Mock = jest.fn();
 const restoreEngineFromSnapshotMock = jest.fn();
 
-jest.mock('@tradeforge/io-binance', () => {
+await jest.unstable_mockModule('@tradeforge/io-binance', async () => {
   type ReaderOpts = { files?: string[] };
 
   const toReaderOpts = (opts: unknown): ReaderOpts => {
@@ -33,6 +33,7 @@ jest.mock('@tradeforge/io-binance', () => {
       },
     };
   };
+
   return {
     __esModule: true,
     createReader: jest.fn((opts: unknown) =>
@@ -43,8 +44,7 @@ jest.mock('@tradeforge/io-binance', () => {
     ),
   };
 });
-
-jest.mock('@tradeforge/core', () => {
+await jest.unstable_mockModule('@tradeforge/core', async () => {
   type MockAccountEntry = {
     id: string;
     balances: Map<string, { free: bigint; locked: bigint }>;
@@ -182,6 +182,13 @@ jest.mock('@tradeforge/core', () => {
     };
   };
 
+  const createAcceleratedClock = (speed = 1) =>
+    createClock(`accelerated(${speed})`);
+
+  const createLogicalClock = () => createClock('logical');
+
+  const createWallClock = () => createClock('wall');
+
   const executeTimeline = () =>
     (async function* () {
       return;
@@ -192,20 +199,48 @@ jest.mock('@tradeforge/core', () => {
       return;
     })();
 
+  const toScaledInt = (value: unknown, scale = 0) => {
+    const numeric =
+      typeof value === 'bigint'
+        ? Number(value)
+        : typeof value === 'number'
+          ? value
+          : typeof value === 'string'
+            ? Number.parseFloat(value)
+            : 0;
+    const factor = Number.isFinite(scale) ? Math.max(0, Math.trunc(scale)) : 0;
+    const scaled = Number.isFinite(numeric)
+      ? Math.round(numeric * 10 ** factor)
+      : 0;
+    return BigInt(scaled);
+  };
+
+  const toPriceInt = (value: unknown, scale = 0) => toScaledInt(value, scale);
+
+  const toQtyInt = (value: unknown, scale = 0) => toScaledInt(value, scale);
+
   const createReplayController = () => {
     let paused = false;
     return {
       pause() {
         paused = true;
       },
+
       resume() {
         paused = false;
       },
+
       isPaused() {
         return paused;
       },
-      waitUntilResumed: async () => {
-        paused = false;
+    };
+  };
+
+  const executeReplay = async () => {
+    return {
+      ok: true,
+      stats: {
+        eventsOut: 0,
       },
     };
   };
@@ -216,27 +251,39 @@ jest.mock('@tradeforge/core', () => {
     ExchangeState,
     OrdersService,
     StaticMockOrderbook,
-    createAcceleratedClock: (speed?: number) => {
-      void speed;
-      return createClock('accelerated');
-    },
-    createLogicalClock: () => createClock('logical'),
+    createAcceleratedClock,
+    createClock,
+    createLogicalClock,
     createMergedStream,
-    createWallClock: () => createClock('wall'),
+    createWallClock,
+    createReplayController,
+    deserializeExchangeState: deserializeExchangeStateMock,
+    executeReplay,
     executeTimeline,
     loadCheckpoint: loadCheckpointMock,
-    deserializeExchangeState: deserializeExchangeStateMock,
-    restoreEngineFromSnapshot: restoreEngineFromSnapshotMock,
     makeCheckpointV1: makeCheckpointV1Mock,
+    restoreEngineFromSnapshot: restoreEngineFromSnapshotMock,
     runReplay: runReplayMock,
-    createReplayController,
-    toPriceInt: (value: string) => BigInt(Math.trunc(Number(value))),
-    toQtyInt: (value: string) => BigInt(Math.trunc(Number(value))),
+    toPriceInt,
+    toQtyInt,
   };
 });
 
-import { ExchangeState, loadCheckpoint, runReplay } from '@tradeforge/core';
-import { simulate } from '../src/commands/simulate.js';
+type CoreModule = typeof import('@tradeforge/core');
+type SimulateModule = typeof import('../src/commands/simulate.js');
+
+let ExchangeState: CoreModule['ExchangeState'];
+let loadCheckpoint: CoreModule['loadCheckpoint'];
+let runReplay: CoreModule['runReplay'];
+let simulate: SimulateModule['simulate'];
+
+beforeAll(async () => {
+  const core = await import('@tradeforge/core');
+  ExchangeState = core.ExchangeState;
+  loadCheckpoint = core.loadCheckpoint;
+  runReplay = core.runReplay;
+  ({ simulate } = await import('../src/commands/simulate.js'));
+});
 
 type SerializedStateLike = {
   config?: {

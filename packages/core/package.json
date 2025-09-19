@@ -7,6 +7,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@tradeforge/validation": "workspace:*"
+  },
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --out-dir dist",
     "clean": "rimraf dist",
