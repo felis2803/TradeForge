@@ -1,23 +1,14 @@
 name: CI
 
 on:
-  push:
   pull_request:
+  push:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node: [22]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: 'pnpm'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm lint
-      - run: pnpm test -- --coverage
+  main:
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      node_versions: '["18.x","20.x"]'
+      schemas: '["v1","v2"]'
+      allow_v2_failure: true
+      working_directory: '.'

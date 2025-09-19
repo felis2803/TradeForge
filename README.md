@@ -13,6 +13,21 @@ pnpm --filter @tradeforge/cli dev
 pnpm --filter @tradeforge/cli dev -- --version
 ```
 
+## Reusable CI workflow
+
+Проект использует переиспользуемый workflow `.github/workflows/ci-reusable.yml`. Вы можете настраивать матрицу через inputs в `.github/workflows/ci.yml`:
+
+```yaml
+jobs:
+  main:
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      node_versions: '["18.x","20.x"]'
+      schemas: '["v1","v2"]'
+      allow_v2_failure: true
+      working_directory: '.'
+```
+
 ## REST service
 
 HTTP адаптер доступен в пакете `@tradeforge/svc`:
