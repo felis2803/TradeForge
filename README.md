@@ -13,6 +13,14 @@ pnpm --filter @tradeforge/cli dev
 pnpm --filter @tradeforge/cli dev -- --version
 ```
 
+## Mini fixtures & jq scripts (for CI)
+
+- **Датасеты:** `datasets/mini-fixtures/{flat,trend,vol}` — используются в CI для быстрых, детерминированных прогонов.
+- **Анализ логов:** см. `scripts/jq/*` (схема v1). Пример:
+  ```bash
+  jq -f scripts/jq/summary-v1.jq logs/v1/orders.ndjson
+  ```
+
 ## REST service
 
 HTTP адаптер доступен в пакете `@tradeforge/svc`:
