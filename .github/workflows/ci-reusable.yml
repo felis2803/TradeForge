@@ -44,8 +44,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: 'pnpm'
-          cache-dependency-path: ${{ format('{0}/pnpm-lock.yaml', inputs.working_directory) }}
 
       - name: Enable Corepack
         run: corepack enable
