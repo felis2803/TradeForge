@@ -15,9 +15,12 @@ pnpm --filter @tradeforge/cli dev -- --version
 
 ## CI
 
-CI в GitHub Actions проверяет проект на Node.js 18.x и 20.x с конфигурацией `SCHEMA=v1`.
-Дополнительно доступен необязательный прогон `SCHEMA=v2` (Node.js 20.x) для pull-request'ов с меткой `schema:v2`.
-Его падение не блокирует мердж, но помогает заранее оценить совместимость.
+### Node/SCHEMA matrix
+
+- Матрица GitHub Actions проверяет проект на Node.js `18.x` и `20.x` с базовой конфигурацией `SCHEMA=v1`.
+- Конфигурация `SCHEMA=v2` запускается только для pull request'ов с меткой `schema:v2` и выполняется на Node.js `20.x`.
+- На push-событиях `SCHEMA=v2` не запускается.
+- Джоба `SCHEMA=v2` помечена как **неблокирующая** — падение допускается через `continue-on-error`, но помогает увидеть потенциальные проблемы заранее.
 
 ## REST service
 

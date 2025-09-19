@@ -16,8 +16,7 @@ jobs:
         include:
           - node: '20.x'
             schema: 'v2'
-            allow_failure: true
-    continue-on-error: ${{ matrix.allow_failure || false }}
+    continue-on-error: ${{ matrix.schema == 'v2' }}
     if: ${{ matrix.schema == 'v1' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'schema:v2')) }}
     env:
       SCHEMA: ${{ matrix.schema }}
@@ -40,4 +39,4 @@ jobs:
         run: pnpm test -- --coverage
       - name: Mark schema v2 run as optional
         if: ${{ matrix.schema == 'v2' }}
-        run: echo 'SCHEMA v2 run completed (non-blocking)'
+        run: echo 'SCHEMA=v2 run is non-blocking (continue-on-error at job level)'
