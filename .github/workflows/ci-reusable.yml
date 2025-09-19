@@ -29,6 +29,8 @@ jobs:
     name: Node ${{ matrix.node }} / Schema ${{ matrix.schema }}
     runs-on: ubuntu-latest
     continue-on-error: ${{ inputs.allow_v2_failure && matrix.schema == 'v2' }}
+    env:
+      SCHEMA: ${{ matrix.schema }}
     strategy:
       fail-fast: false
       matrix:
@@ -54,14 +56,10 @@ jobs:
 
       - name: Build
         working-directory: ${{ inputs.working_directory }}
-        env:
-          SCHEMA: ${{ matrix.schema }}
         run: pnpm -w run build
 
       - name: Test
         working-directory: ${{ inputs.working_directory }}
-        env:
-          SCHEMA: ${{ matrix.schema }}
         run: pnpm -w run test
 
       - name: Soft-fail note for schema v2
