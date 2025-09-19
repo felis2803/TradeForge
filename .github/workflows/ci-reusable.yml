@@ -77,9 +77,9 @@ jobs:
         working-directory: ${{ inputs.working_directory }}
         run: pnpm install --frozen-lockfile
 
-      - name: Build
+      - name: Build packages and examples
         working-directory: ${{ inputs.working_directory }}
-        run: pnpm -w run build
+        run: pnpm -w run examples:build
 
       - name: Test
         working-directory: ${{ inputs.working_directory }}

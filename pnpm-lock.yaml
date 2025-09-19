@@ -72,6 +72,12 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@22.18.3)
 
+  examples/09-bot-skeleton:
+    dependencies:
+      '@tradeforge/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
+
   apps/cli:
     dependencies:
       '@tradeforge/core':
