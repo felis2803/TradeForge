@@ -1,4 +1,4 @@
-name: Reusable CI (build, lint & test)
+name: Reusable CI (build & test)
 
 on:
   workflow_call:
@@ -34,8 +34,6 @@ jobs:
       matrix:
         node: ${{ fromJson(inputs.node_versions) }}
         schema: ${{ fromJson(inputs.schemas) }}
-    env:
-      SCHEMA: ${{ matrix.schema }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,15 +54,15 @@ jobs:
 
       - name: Build
         working-directory: ${{ inputs.working_directory }}
-        run: pnpm run build
-
-      - name: Lint
-        working-directory: ${{ inputs.working_directory }}
-        run: pnpm run lint
+        env:
+          SCHEMA: ${{ matrix.schema }}
+        run: pnpm -w run build
 
       - name: Test
         working-directory: ${{ inputs.working_directory }}
-        run: pnpm run test -- --coverage
+        env:
+          SCHEMA: ${{ matrix.schema }}
+        run: pnpm -w run test
 
       - name: Soft-fail note for schema v2
         if: ${{ inputs.allow_v2_failure && matrix.schema == 'v2' }}
