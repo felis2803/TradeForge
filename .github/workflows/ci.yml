@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    # Один job, входы зависят от типа события
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      node_versions: '["18.x","20.x"]'
+      # На PR гоняем v1+v2, на push только v1
+      schemas: ${{ github.event_name == 'pull_request' && '["v1","v2"]' || '["v1"]' }}
+      # v2 — мягкий (не блокирует PR). На push v2 нет, флаг безвреден.
+      allow_v2_failure: true
+      working_directory: '.'
