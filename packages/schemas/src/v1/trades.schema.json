@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "@tradeforge/schemas/v1/trades.schema.json",
+  "title": "trades.v1",
+  "type": "object",
+  "required": ["ts", "symbol", "price", "qty"],
+  "properties": {
+    "ts": { "type": ["integer", "string"] },
+    "symbol": { "type": "string", "minLength": 1 },
+    "price": { "type": ["number", "integer", "string"] },
+    "qty": { "type": ["number", "integer", "string"] },
+    "side": {
+      "type": "string",
+      "enum": ["BUY", "SELL", "buy", "sell"]
+    },
+    "aggressor": {
+      "type": "string",
+      "enum": ["BUY", "SELL", "buy", "sell"]
+    },
+    "id": { "type": ["string", "integer"] },
+    "source": { "type": "string", "minLength": 1 },
+    "seq": { "type": "integer", "minimum": 0 },
+    "entry": { "type": "string" },
+    "kind": { "type": "string", "enum": ["trade"] }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "declaration": true,
+    "paths": {
+      "@tradeforge/schemas": ["packages/schemas/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

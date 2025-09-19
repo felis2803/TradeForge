@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "@tradeforge/schemas/v1/logs.schema.json",
+  "title": "logs.v1",
+  "type": "object",
+  "$defs": {
+    "numericLike": { "type": ["number", "integer", "string"] },
+    "side": { "type": "string", "enum": ["BUY", "SELL", "buy", "sell"] },
+    "liquidity": {
+      "type": "string",
+      "enum": ["MAKER", "TAKER", "maker", "taker"]
+    }
+  },
+  "required": ["ts", "kind"],
+  "properties": {
+    "ts": { "type": ["integer", "string"] },
+    "kind": { "type": "string" },
+    "orderId": { "type": ["string", "integer"] },
+    "side": { "$ref": "#/$defs/side" },
+    "price": { "$ref": "#/$defs/numericLike" },
+    "qty": { "$ref": "#/$defs/numericLike" },
+    "fee": { "$ref": "#/$defs/numericLike" },
+    "reason": { "type": "string" },
+    "session": { "type": "string" },
+    "runId": { "type": "string" },
+    "fill": {
+      "type": "object",
+      "required": ["price", "qty"],
+      "properties": {
+        "ts": { "type": ["integer", "string"] },
+        "orderId": { "type": ["string", "integer"] },
+        "price": { "$ref": "#/$defs/numericLike" },
+        "qty": { "$ref": "#/$defs/numericLike" },
+        "side": { "$ref": "#/$defs/side" },
+        "liquidity": { "$ref": "#/$defs/liquidity" },
+        "tradeRef": { "type": "string" },
+        "sourceAggressor": { "$ref": "#/$defs/side" }
+      },
+      "additionalProperties": true
+    },
+    "patch": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "executedQty": { "$ref": "#/$defs/numericLike" },
+        "cumulativeQuote": { "$ref": "#/$defs/numericLike" },
+        "fees": {
+          "type": "object",
+          "properties": {
+            "maker": { "$ref": "#/$defs/numericLike" },
+            "taker": { "$ref": "#/$defs/numericLike" }
+          },
+          "additionalProperties": true
+        },
+        "tsUpdated": { "type": ["integer", "string"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

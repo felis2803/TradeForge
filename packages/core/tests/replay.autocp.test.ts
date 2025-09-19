@@ -1,7 +1,6 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as checkpointModule from '../src/replay/checkpoint.js';
 import {
   runReplay,
   type CheckpointV1,
@@ -175,16 +174,14 @@ describe('runReplay auto-checkpoints', () => {
     ];
     const buildSpy = jest.fn(async () => createDummyCheckpoint());
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const saveSpy = jest
-      .spyOn(checkpointModule, 'saveCheckpoint')
-      .mockRejectedValue(new Error('disk full'));
+    const tempDir = await mkdtemp(join(tmpdir(), 'tf-autocp-error-'));
 
     try {
       const stats = await runReplay({
         timeline: timelineFrom(events),
         clock: new ManualClock(0),
         autoCp: {
-          savePath: join(tmpdir(), 'should-not-exist.json'),
+          savePath: tempDir,
           cpIntervalEvents: 2,
           buildCheckpoint: buildSpy,
         },
@@ -194,8 +191,8 @@ describe('runReplay auto-checkpoints', () => {
       expect(buildSpy).toHaveBeenCalledTimes(2);
       expect(warnSpy).toHaveBeenCalled();
     } finally {
-      saveSpy.mockRestore();
       warnSpy.mockRestore();
+      await rm(tempDir, { recursive: true, force: true });
     }
   });
 
