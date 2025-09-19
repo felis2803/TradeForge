@@ -47,8 +47,22 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: ${{ format('{0}/pnpm-lock.yaml', inputs.working_directory) }}
 
-      - name: Enable Corepack (use workspace pnpm version)
+      - name: Enable Corepack
         run: corepack enable
+
+      - name: Prepare pnpm from packageManager
+        run: |
+          PACKAGE_JSON="${{ inputs.working_directory }}/package.json"
+          if [ -f "$PACKAGE_JSON" ]; then
+            PACKAGE_MANAGER=$(node -p "require('./$PACKAGE_JSON').packageManager ?? ''")
+            if [ -n "$PACKAGE_MANAGER" ]; then
+              corepack prepare "$PACKAGE_MANAGER" --activate
+            else
+              echo "packageManager is not defined; skipping pnpm activation."
+            fi
+          else
+            echo "package.json not found at $PACKAGE_JSON; skipping pnpm activation."
+          fi
 
       - name: Install dependencies
         working-directory: ${{ inputs.working_directory }}
