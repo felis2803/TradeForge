@@ -15,6 +15,7 @@
   "properties": {
     "ts": { "type": ["integer", "string"] },
     "kind": { "type": "string" },
+    "type": { "type": "string" },
     "orderId": { "type": ["string", "integer"] },
     "side": { "$ref": "#/$defs/side" },
     "price": { "$ref": "#/$defs/numericLike" },

@@ -70,6 +70,9 @@ jobs:
           restore-keys: |
             pnpm-store-${{ runner.os }}-
 
+      - name: Show schema
+        run: echo "SCHEMA=$SCHEMA VALIDATE_WRITE=${{ env.VALIDATE_WRITE || '' }}"
+
       - name: Install dependencies
         working-directory: ${{ inputs.working_directory }}
         run: pnpm install --frozen-lockfile
