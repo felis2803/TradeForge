@@ -13,20 +13,6 @@ pnpm --filter @tradeforge/cli dev
 pnpm --filter @tradeforge/cli dev -- --version
 ```
 
-<<<<<<< HEAD
-
-## Mini fixtures & jq scripts (for CI)
-
-- **Датасеты:** `datasets/mini-fixtures/{flat,trend,vol}` — используются в CI для быстрых, детерминированных прогонов.
-- **Анализ логов:** см. `scripts/jq/*` (схема v1). Пример:
-  ```bash
-  jq -f scripts/jq/summary-v1.jq logs/v1/orders.ndjson
-  ```
-
-=======
-
-> > > > > > > 1e62c35e02df272167ec1536177a49ec1e1a0a7f
-
 ## Reusable CI workflow
 
 Проект использует переиспользуемый workflow `.github/workflows/ci-reusable.yml`. Вы можете настраивать матрицу через inputs в `.github/workflows/ci.yml`:
@@ -44,6 +30,14 @@ jobs:
 
 > Проект использует **Corepack**: версия pnpm берётся из `package.json` (`packageManager`).
 > Локально выполните `corepack enable`, чтобы гарантировать ту же версию, что и в CI.
+
+## Mini fixtures & jq scripts (for CI)
+
+- **Датасеты:** `datasets/mini-fixtures/{flat,trend,vol}` — используются в CI для быстрых, детерминированных прогонов.
+- **Анализ логов:** см. `scripts/jq/*` (схема v1). Пример:
+  ```bash
+  jq -f scripts/jq/summary-v1.jq logs/v1/orders.ndjson
+  ```
 
 ## REST service
 
