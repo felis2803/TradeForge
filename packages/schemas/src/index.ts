@@ -92,6 +92,7 @@ export type ExecutionFillV1 = {
 export type LogEntryV1 = {
   ts: number | string;
   kind: string;
+  type?: string;
   orderId?: string | number;
   side?: SideLike;
   price?: NumericLike;

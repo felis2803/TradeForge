@@ -28,11 +28,7 @@ import {
   type SimClock,
   type SymbolId,
 } from '@tradeforge/core';
-import {
-  ajv as validationAjv,
-  validateLogV1,
-  type LogEntryV1,
-} from '@tradeforge/validation';
+import { validateWithMode, type LogEntryV1 } from '@tradeforge/validation';
 
 import { createAccountWithDeposit } from '../_shared/accounts.js';
 import { buildMerged } from '../_shared/merge.js';
@@ -85,20 +81,8 @@ interface NdjsonLogger {
   readonly path: string;
 }
 
-type ValidationErrors = Parameters<typeof validationAjv.errorsText>[0];
-
-function warnSchema(kind: string, errors: ValidationErrors): void {
-  if (!errors || errors.length === 0) {
-    return;
-  }
-  const message = validationAjv.errorsText(errors, { separator: '; ' });
-  console.warn(`[bot ndjson] ${kind} validation failed: ${message}`);
-}
-
 function writeLogEntry(logger: NdjsonLogger, entry: LogEntryV1): void {
-  if (!validateLogV1(entry)) {
-    warnSchema('log', validateLogV1.errors);
-  }
+  validateWithMode('logV1', entry);
   logger.write(entry);
 }
 
@@ -508,19 +492,25 @@ async function main(): Promise<void> {
           );
         }
         if (report.fill && ndjsonLogger) {
-          writeLogEntry(ndjsonLogger, {
+          const fill: NonNullable<LogEntryV1['fill']> = {
+            side: report.fill.side,
+            price: formatPrice(report.fill.price),
+            qty: formatQty(report.fill.qty),
+            liquidity: report.fill.liquidity,
+          };
+          if (report.fill.tradeRef !== undefined) {
+            fill.tradeRef = report.fill.tradeRef;
+          }
+          const entry: LogEntryV1 = {
             ts: Number(report.ts ?? 0),
             kind: 'fill',
             session: sessionId,
-            orderId: report.orderId ? String(report.orderId) : undefined,
-            fill: {
-              side: report.fill.side,
-              price: formatPrice(report.fill.price),
-              qty: formatQty(report.fill.qty),
-              liquidity: report.fill.liquidity,
-              tradeRef: report.fill.tradeRef,
-            },
-          });
+            fill,
+          };
+          if (report.orderId !== undefined) {
+            entry.orderId = String(report.orderId);
+          }
+          writeLogEntry(ndjsonLogger, entry);
         }
       }
     }

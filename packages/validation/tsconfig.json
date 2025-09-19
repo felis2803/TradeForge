@@ -2,9 +2,14 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": "src",
     "declaration": true,
+    "resolveJsonModule": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "paths": {
-      "@tradeforge/schemas": ["packages/schemas/dist/index.d.ts"]
+      "@tradeforge/schemas": ["packages/schemas/dist/index.d.ts"],
+      "@tradeforge/schemas/v1/*": ["packages/schemas/dist/v1/*.schema.json"]
     }
   },
   "include": ["src/**/*"]

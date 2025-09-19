@@ -33,11 +33,7 @@ import {
   type CoreReaderCursor,
   type MergeStartState,
 } from '@tradeforge/core';
-import {
-  ajv as validationAjv,
-  validateLogV1,
-  type LogEntryV1,
-} from '@tradeforge/validation';
+import { validateWithMode, type LogEntryV1 } from '@tradeforge/validation';
 import { existsSync } from 'fs';
 import { resolve, basename } from 'path';
 import { materializeFixturePath } from '../utils/materializeFixtures.js';
@@ -61,16 +57,6 @@ function toNumericLike(value: unknown): string | number | undefined {
     return value;
   }
   return undefined;
-}
-
-type ValidationErrors = Parameters<typeof validationAjv.errorsText>[0];
-
-function warnValidation(kind: string, errors: ValidationErrors): void {
-  if (!errors || errors.length === 0) {
-    return;
-  }
-  const message = validationAjv.errorsText(errors, { separator: '; ' });
-  console.warn(`[simulate] ${kind} validation failed: ${message}`);
 }
 
 function toExecutionReportLog(report: ExecutionReport): LogEntryV1 {
@@ -969,9 +955,7 @@ export async function simulate(argv: string[]): Promise<void> {
       if (ndjson) {
         if (limit === undefined || printed < limit) {
           const entry = toExecutionReportLog(report);
-          if (!validateLogV1(entry)) {
-            warnValidation('execution report', validateLogV1.errors);
-          }
+          validateWithMode('logV1', entry);
           console.log(stringify(entry));
           printed += 1;
         }

@@ -1,11 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   validateTradeV1,
   validateDepthL2DiffV1,
   validateCheckpointV1,
   validateLogV1,
   validateMetricV1,
+  validateWithMode,
 } from '../src/index.js';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('schemas v1 validation', () => {
   it('trade ok', () => {
@@ -53,6 +58,7 @@ describe('schemas v1 validation', () => {
     const ok = validateLogV1({
       ts: 1,
       kind: 'FILL',
+      type: 'order_new',
       orderId: 'o1',
       fill: {
         price: '50000',
@@ -67,5 +73,46 @@ describe('schemas v1 validation', () => {
   it('metric ok', () => {
     const ok = validateMetricV1({ ts: 1, name: 'pnl', value: '10' });
     expect(ok).toBe(true);
+  });
+
+  it('log validation warns by default mode', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const ok = validateWithMode(
+      'logV1',
+      {
+        ts: 1,
+        kind: 'FILL',
+        fill: {
+          price: '50000',
+        },
+      },
+      'warn',
+    );
+    expect(ok).toBe(false);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const [message] = warnSpy.mock.calls[0];
+    expect(message).toContain('[logV1]');
+  });
+
+  it('log validation throws in strict mode', () => {
+    expect(() =>
+      validateWithMode(
+        'logV1',
+        {
+          ts: 1,
+          kind: 'FILL',
+          fill: {
+            price: '50000',
+          },
+        },
+        'strict',
+      ),
+    ).toThrowError('[logV1] validation failed');
+  });
+
+  it('checkpoint error on missing fields', () => {
+    const ok = validateCheckpointV1({} as unknown as CheckpointV1);
+    expect(ok).toBe(false);
+    expect(validateCheckpointV1.errors).toBeTruthy();
   });
 });

@@ -4,18 +4,20 @@
   "type": "module",
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm run examples:build",
+    "build:packages": "pnpm -r --filter \"./packages/*\" run build",
+    "build:examples": "pnpm -r --filter \"./examples/*\" run build",
     "build:schemas": "pnpm --filter @tradeforge/schemas run build",
     "build:validation": "pnpm --filter @tradeforge/validation run build",
     "clean": "pnpm -r run clean",
     "format": "prettier -w .",
     "lint": "eslint . --ext .ts",
-    "test": "pnpm run test:jest && pnpm run test:validation",
+    "test": "pnpm run test:jest && pnpm --filter @tradeforge/validation run test",
     "test:jest": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "test:validation": "pnpm --filter @tradeforge/validation run test",
     "typecheck": "pnpm -r run typecheck",
     "prepare": "husky install",
-    "examples:build": "tsc -p tsconfig.examples.json",
+    "examples:build": "node ./scripts/run-examples-build.mjs",
     "examples:lint": "eslint \"examples/**/*.{ts,tsx,js,md}\"",
     "examples:run": "node --enable-source-maps examples/_shared/bin/run-scenario.ts",
     "examples:ex01": "node dist-examples/01-basic-replay/run.js",
@@ -52,6 +54,7 @@
   },
   "dependencies": {
     "@tradeforge/core": "workspace:*",
-    "@tradeforge/io-binance": "workspace:*"
+    "@tradeforge/io-binance": "workspace:*",
+    "@tradeforge/validation": "workspace:*"
   }
 }
