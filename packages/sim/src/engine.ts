@@ -266,12 +266,16 @@ export class EngineImpl implements Engine {
   ): void {
     const event: RejectEvent = {
       orderId,
-      clientId: order.clientId,
       reason,
       order,
       ts,
-      message,
     };
+    if (order.clientId !== undefined) {
+      event.clientId = order.clientId;
+    }
+    if (message !== undefined) {
+      event.message = message;
+    }
     this.eventBus.emit('orderRejected', event);
   }
 
@@ -399,12 +403,16 @@ export class EngineImpl implements Engine {
     this.eventBus.emit('orderUpdated', view);
     const event: RejectEvent = {
       orderId: order.id,
-      clientId: order.clientId,
       reason,
       order: order.request,
       ts,
-      message,
     };
+    if (order.clientId !== undefined) {
+      event.clientId = order.clientId;
+    }
+    if (message !== undefined) {
+      event.message = message;
+    }
     this.eventBus.emit('orderRejected', event);
   }
 
