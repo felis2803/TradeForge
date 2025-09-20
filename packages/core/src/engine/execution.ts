@@ -5,13 +5,15 @@ import { OrdersService } from '../sim/orders.js';
 import type { Order } from '../sim/types.js';
 import type { PriceInt, QtyInt, TimestampMs } from '../types/index.js';
 import {
+  applyParticipationFactor,
+  canMarketOrderExecute,
   cloneFees,
   compareOrdersForMatch,
   createFill,
   crossesLimitPrice,
   determineLiquidity,
-  applyParticipationFactor,
   getOrderRemainingQty,
+  getTradeAggressorSide,
 } from './utils.js';
 import type { ExecutionOptions, ExecutionReport } from './types.js';
 
@@ -89,6 +91,7 @@ export async function* executeTimeline(
       continue;
     }
     openOrders.sort(compareOrdersForMatch);
+    // Sort once per trade event to keep deterministic priority between orders.
     let remainingTradeQty = applyParticipationFactor(
       trade.qty,
       participationFactor,
@@ -96,39 +99,51 @@ export async function* executeTimeline(
     if (remainingTradeQty <= 0n) {
       continue;
     }
+    const tradeAggressorSide = getTradeAggressorSide(trade);
     for (const order of openOrders) {
-      const crosses = crossesLimitPrice(order, trade.price);
       const remainingOrderQty = getOrderRemainingQty(order);
       if (remainingOrderQty <= 0n) {
         continue;
       }
-      if (order.tif === 'FOK') {
-        if (!crosses || remainingTradeQty < remainingOrderQty) {
-          const canceled = orders.cancelOrder(order.id);
-          if (canceled.status === 'CANCELED') {
-            yield {
-              ts: event.ts,
-              kind: 'ORDER_UPDATED',
-              orderId: order.id,
-              patch: buildOrderPatch(canceled),
-            } satisfies ExecutionReport;
+      const isMarketOrder = order.type === 'MARKET';
+      if (isMarketOrder) {
+        const canExecute = canMarketOrderExecute(order, {
+          remainingTradeQty,
+        });
+        if (!canExecute) {
+          // Skip until a trade event provides opposite-side liquidity.
+          continue;
+        }
+      } else {
+        const crosses = crossesLimitPrice(order, trade.price);
+        if (order.tif === 'FOK') {
+          if (!crosses || remainingTradeQty < remainingOrderQty) {
+            const canceled = orders.cancelOrder(order.id);
+            if (canceled.status === 'CANCELED') {
+              yield {
+                ts: event.ts,
+                kind: 'ORDER_UPDATED',
+                orderId: order.id,
+                patch: buildOrderPatch(canceled),
+              } satisfies ExecutionReport;
+            }
+            continue;
+          }
+        }
+        if (!crosses) {
+          if (order.tif === 'IOC') {
+            const canceled = orders.cancelOrder(order.id);
+            if (canceled.status === 'CANCELED') {
+              yield {
+                ts: event.ts,
+                kind: 'ORDER_UPDATED',
+                orderId: order.id,
+                patch: buildOrderPatch(canceled),
+              } satisfies ExecutionReport;
+            }
           }
           continue;
         }
-      }
-      if (!crosses) {
-        if (order.tif === 'IOC') {
-          const canceled = orders.cancelOrder(order.id);
-          if (canceled.status === 'CANCELED') {
-            yield {
-              ts: event.ts,
-              kind: 'ORDER_UPDATED',
-              orderId: order.id,
-              patch: buildOrderPatch(canceled),
-            } satisfies ExecutionReport;
-          }
-        }
-        continue;
       }
       if (remainingTradeQty <= 0n) {
         if (order.tif === 'IOC') {
@@ -149,11 +164,10 @@ export async function* executeTimeline(
         continue;
       }
       const fillQty = toQtyInt(fillQtyRaw);
-      const aggressorSide = trade.aggressor ?? trade.side;
       const liquidity = determineLiquidity(order, {
         treatLimitAsMaker,
         useAggressorForLiquidity,
-        ...(aggressorSide ? { aggressorSide } : {}),
+        ...(tradeAggressorSide ? { aggressorSide: tradeAggressorSide } : {}),
       });
       const fill = createFill({
         ts: event.ts,
@@ -162,7 +176,7 @@ export async function* executeTimeline(
         qty: fillQty,
         liquidity,
         ...(trade.id ? { tradeRef: trade.id } : {}),
-        ...(aggressorSide ? { sourceAggressor: aggressorSide } : {}),
+        ...(tradeAggressorSide ? { sourceAggressor: tradeAggressorSide } : {}),
       });
       const updated = orders.applyFill(order.id, fill);
       remainingTradeQty -= fillQtyRaw;
@@ -178,6 +192,7 @@ export async function* executeTimeline(
       }
     }
     const eventTsRaw = event.ts as unknown as number;
+    // IOC orders that did not finish during this trade cancel at event close.
     for (const order of openOrders) {
       if (order.tif !== 'IOC') {
         continue;

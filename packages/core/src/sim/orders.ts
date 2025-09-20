@@ -160,7 +160,7 @@ export class OrdersService {
       return order;
     }
 
-    if (input.type === 'MARKET') {
+    if (order.type === 'MARKET' && order.tif === 'FOK') {
       order.status = 'REJECTED';
       order.rejectReason = 'UNSUPPORTED_EXECUTION';
       this.state.orders.set(order.id, order);
@@ -194,7 +194,7 @@ export class OrdersService {
       delete order.triggerDirection;
     }
 
-    if (order.type === 'STOP_MARKET') {
+    if (order.type === 'MARKET' || order.type === 'STOP_MARKET') {
       delete order.price;
     }
 
@@ -211,7 +211,7 @@ export class OrdersService {
           remaining: total,
         };
       }
-    } else if (order.type === 'STOP_MARKET') {
+    } else if (order.type === 'MARKET' || order.type === 'STOP_MARKET') {
       if (order.side === 'SELL') {
         const qtyRaw = toRawQty(order.qty);
         if (!this.accounts.lock(order.accountId, symbolCfg.base, qtyRaw)) {
