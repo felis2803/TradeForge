@@ -13,6 +13,9 @@ importers:
       '@tradeforge/io-binance':
         specifier: workspace:*
         version: link:packages/io-binance
+      '@tradeforge/loader-binance':
+        specifier: workspace:*
+        version: link:packages/loader-binance
       '@tradeforge/validation':
         specifier: workspace:*
         version: link:packages/validation
