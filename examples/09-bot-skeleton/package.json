@@ -1,0 +1,11 @@
+{
+  "name": "@tradeforge/example-09-bot-skeleton",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p ../../tsconfig.examples.json"
+  },
+  "dependencies": {
+    "@tradeforge/validation": "workspace:*"
+  }
+}

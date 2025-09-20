@@ -28,6 +28,7 @@ import {
   type SimClock,
   type SymbolId,
 } from '@tradeforge/core';
+import { validateWithMode, type LogEntryV1 } from '@tradeforge/validation';
 
 import { createAccountWithDeposit } from '../_shared/accounts.js';
 import { buildMerged } from '../_shared/merge.js';
@@ -78,6 +79,11 @@ interface NdjsonLogger {
   write(entry: unknown): void;
   close(): Promise<void>;
   readonly path: string;
+}
+
+function writeLogEntry(logger: NdjsonLogger, entry: LogEntryV1): void {
+  validateWithMode('logV1', entry);
+  logger.write(entry);
 }
 
 interface BotConfig {
@@ -486,19 +492,25 @@ async function main(): Promise<void> {
           );
         }
         if (report.fill && ndjsonLogger) {
-          ndjsonLogger.write({
+          const fill: NonNullable<LogEntryV1['fill']> = {
+            side: report.fill.side,
+            price: formatPrice(report.fill.price),
+            qty: formatQty(report.fill.qty),
+            liquidity: report.fill.liquidity,
+          };
+          if (report.fill.tradeRef !== undefined) {
+            fill.tradeRef = report.fill.tradeRef;
+          }
+          const entry: LogEntryV1 = {
             ts: Number(report.ts ?? 0),
             kind: 'fill',
             session: sessionId,
-            orderId: report.orderId ? String(report.orderId) : undefined,
-            fill: {
-              side: report.fill.side,
-              price: formatPrice(report.fill.price),
-              qty: formatQty(report.fill.qty),
-              liquidity: report.fill.liquidity,
-              tradeRef: report.fill.tradeRef,
-            },
-          });
+            fill,
+          };
+          if (report.orderId !== undefined) {
+            entry.orderId = String(report.orderId);
+          }
+          writeLogEntry(ndjsonLogger, entry);
         }
       }
     }
@@ -637,7 +649,7 @@ async function main(): Promise<void> {
               metrics.onCancel();
               performedAction = true;
               if (ndjsonLogger) {
-                ndjsonLogger.write({
+                writeLogEntry(ndjsonLogger, {
                   ts: now,
                   kind: 'action',
                   session: sessionId,
@@ -671,7 +683,7 @@ async function main(): Promise<void> {
               metrics.onCancel();
               performedAction = true;
               if (ndjsonLogger) {
-                ndjsonLogger.write({
+                writeLogEntry(ndjsonLogger, {
                   ts: now,
                   kind: 'action',
                   session: sessionId,
@@ -705,7 +717,7 @@ async function main(): Promise<void> {
               metrics.onPlace();
               performedAction = true;
               if (ndjsonLogger) {
-                ndjsonLogger.write({
+                writeLogEntry(ndjsonLogger, {
                   ts: now,
                   kind: 'action',
                   session: sessionId,
@@ -739,7 +751,7 @@ async function main(): Promise<void> {
               metrics.onPlace();
               performedAction = true;
               if (ndjsonLogger) {
-                ndjsonLogger.write({
+                writeLogEntry(ndjsonLogger, {
                   ts: now,
                   kind: 'action',
                   session: sessionId,
@@ -793,7 +805,7 @@ async function main(): Promise<void> {
     const summary = metrics.finalize(finalizeParams);
 
     if (ndjsonLogger) {
-      ndjsonLogger.write({
+      writeLogEntry(ndjsonLogger, {
         ts: Date.now(),
         kind: 'summary',
         session: sessionId,

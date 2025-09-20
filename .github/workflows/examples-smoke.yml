@@ -18,6 +18,5 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -w build
-      - run: pnpm -w examples:build
+      - run: pnpm -w run examples:build
       - run: node examples/_smoke/smoke.ts

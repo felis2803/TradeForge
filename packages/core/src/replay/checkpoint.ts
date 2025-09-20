@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { ajv as schemaAjv, validateCheckpointV1 } from '@tradeforge/validation';
 import { StaticMockOrderbook } from '../sim/orderbook.mock.js';
 import { ExchangeState } from '../sim/state.js';
 import type {
@@ -598,6 +599,12 @@ export async function saveCheckpoint(
   cp: CheckpointV1,
 ): Promise<void> {
   const sorted = sortKeysDeep(cp);
+  if (!validateCheckpointV1(sorted)) {
+    const message = schemaAjv.errorsText(validateCheckpointV1.errors ?? [], {
+      separator: '; ',
+    });
+    console.warn(`[checkpoint] schema validation failed: ${message}`);
+  }
   let json = JSON.stringify(sorted, null, 2);
   json = json.replace(/^{\n\s*"/, '{"');
   await writeFile(path, json, 'utf8');

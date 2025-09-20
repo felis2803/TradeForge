@@ -4,39 +4,21 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
-    name: Node ${{ matrix.node }} · schema ${{ matrix.schema }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ['18.x', '20.x']
-        schema: ['v1']
-        include:
-          - node: '20.x'
-            schema: 'v2'
-    continue-on-error: ${{ matrix.schema == 'v2' }}
-    if: ${{ matrix.schema == 'v1' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'schema:v2')) }}
-    env:
-      SCHEMA: ${{ matrix.schema }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node }}
-          cache: 'pnpm'
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm build
-      - name: Lint
-        run: pnpm lint
-      - name: Test
-        run: pnpm test -- --coverage
-      - name: Mark schema v2 run as optional
-        if: ${{ matrix.schema == 'v2' }}
-        run: echo 'SCHEMA=v2 run is non-blocking (continue-on-error at job level)'
+    # Один job, входы зависят от типа события
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      node_versions: '["18.x","20.x"]'
+      # На PR гоняем v1+v2, на push только v1
+      schemas: ${{ github.event_name == 'pull_request' && '["v1","v2"]' || '["v1"]' }}
+      # v2 — мягкий (не блокирует PR). На push v2 нет, флаг безвреден.
+      allow_v2_failure: true
+      working_directory: '.'

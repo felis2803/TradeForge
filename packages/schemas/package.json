@@ -1,0 +1,31 @@
+{
+  "name": "@tradeforge/schemas",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && cpy \"src/v1/**/*.json\" dist/v1 --parents"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./v1/trades": "./dist/v1/trades.schema.json",
+    "./v1/depth-l2diff": "./dist/v1/depth-l2diff.schema.json",
+    "./v1/checkpoint": "./dist/v1/checkpoint.schema.json",
+    "./v1/logs": "./dist/v1/logs.schema.json",
+    "./v1/metrics": "./dist/v1/metrics.schema.json",
+    "./v1/trades.schema.json": "./dist/v1/trades.schema.json",
+    "./v1/depth-l2diff.schema.json": "./dist/v1/depth-l2diff.schema.json",
+    "./v1/checkpoint.schema.json": "./dist/v1/checkpoint.schema.json",
+    "./v1/logs.schema.json": "./dist/v1/logs.schema.json",
+    "./v1/metrics.schema.json": "./dist/v1/metrics.schema.json"
+  },
+  "devDependencies": {
+    "cpy-cli": "^5.0.0",
+    "typescript": "^5.4.0"
+  }
+}

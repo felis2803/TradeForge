@@ -33,6 +33,7 @@ import {
   type CoreReaderCursor,
   type MergeStartState,
 } from '@tradeforge/core';
+import { validateWithMode, type LogEntryV1 } from '@tradeforge/validation';
 import { existsSync } from 'fs';
 import { resolve, basename } from 'path';
 import { materializeFixturePath } from '../utils/materializeFixtures.js';
@@ -43,6 +44,101 @@ function stringify(value: unknown, space?: number) {
     (_, v) => (typeof v === 'bigint' ? v.toString() : v),
     space,
   );
+}
+
+function toNumericLike(value: unknown): string | number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value === 'bigint') {
+    return value.toString(10);
+  }
+  if (typeof value === 'number' || typeof value === 'string') {
+    return value;
+  }
+  return undefined;
+}
+
+function toExecutionReportLog(report: ExecutionReport): LogEntryV1 {
+  const entry: LogEntryV1 = {
+    ts: Number(report.ts),
+    kind: report.kind,
+  };
+
+  if (report.orderId !== undefined) {
+    entry.orderId = String(report.orderId);
+  }
+
+  if (report.fill) {
+    const price = toNumericLike(report.fill.price) ?? String(report.fill.price);
+    const qty = toNumericLike(report.fill.qty) ?? String(report.fill.qty);
+    const fill: NonNullable<LogEntryV1['fill']> = {
+      price,
+      qty,
+    };
+    if (report.fill.ts !== undefined) {
+      fill.ts = Number(report.fill.ts);
+    }
+    if (report.fill.orderId !== undefined) {
+      fill.orderId = String(report.fill.orderId);
+    }
+    if (report.fill.side) {
+      fill.side = report.fill.side;
+    }
+    if (report.fill.liquidity) {
+      fill.liquidity = report.fill.liquidity;
+    }
+    if (report.fill.tradeRef !== undefined) {
+      fill.tradeRef = report.fill.tradeRef;
+    }
+    if (report.fill.sourceAggressor !== undefined) {
+      fill.sourceAggressor = report.fill.sourceAggressor;
+    }
+    entry.fill = fill;
+  }
+
+  if (report.patch) {
+    const patch: NonNullable<LogEntryV1['patch']> = {};
+    if (report.patch.status !== undefined) {
+      patch.status = report.patch.status;
+    }
+    if (report.patch.executedQty !== undefined) {
+      const value = toNumericLike(report.patch.executedQty);
+      if (value !== undefined) {
+        patch.executedQty = value;
+      }
+    }
+    if (report.patch.cumulativeQuote !== undefined) {
+      const value = toNumericLike(report.patch.cumulativeQuote);
+      if (value !== undefined) {
+        patch.cumulativeQuote = value;
+      }
+    }
+    if (report.patch.fees) {
+      const fees: Record<string, unknown> = {};
+      if (report.patch.fees.maker !== undefined) {
+        const maker = toNumericLike(report.patch.fees.maker);
+        if (maker !== undefined) {
+          fees['maker'] = maker;
+        }
+      }
+      if (report.patch.fees.taker !== undefined) {
+        const taker = toNumericLike(report.patch.fees.taker);
+        if (taker !== undefined) {
+          fees['taker'] = taker;
+        }
+      }
+      patch.fees = fees;
+    }
+    if (report.patch.tsUpdated !== undefined) {
+      patch.tsUpdated = Number(report.patch.tsUpdated);
+    }
+    if (Object.keys(patch).length > 0) {
+      entry.patch = patch;
+    }
+  }
+
+  return entry;
 }
 
 function parseArgs(argv: string[]): Record<string, string> {
@@ -858,7 +954,9 @@ export async function simulate(argv: string[]): Promise<void> {
       reports.push(report);
       if (ndjson) {
         if (limit === undefined || printed < limit) {
-          console.log(stringify(report));
+          const entry = toExecutionReportLog(report);
+          validateWithMode('logV1', entry);
+          console.log(stringify(entry));
           printed += 1;
         }
       }

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "@tradeforge/schemas/v1/depth-l2diff.schema.json",
+  "title": "depth.l2diff.v1",
+  "type": "object",
+  "required": ["ts", "symbol", "bids", "asks"],
+  "$defs": {
+    "level": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": [
+            { "type": ["number", "integer", "string"] },
+            { "type": ["number", "integer", "string"] }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        {
+          "type": "object",
+          "required": ["price", "qty"],
+          "properties": {
+            "price": { "type": ["number", "integer", "string"] },
+            "qty": { "type": ["number", "integer", "string"] }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "properties": {
+    "ts": { "type": ["integer", "string"] },
+    "symbol": { "type": "string", "minLength": 1 },
+    "bids": { "type": "array", "items": { "$ref": "#/$defs/level" } },
+    "asks": { "type": "array", "items": { "$ref": "#/$defs/level" } },
+    "source": { "type": "string" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "entry": { "type": "string" },
+    "kind": { "type": "string", "enum": ["depth"] }
+  },
+  "additionalProperties": false
+}
