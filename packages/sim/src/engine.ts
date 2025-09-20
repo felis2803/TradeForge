@@ -4,6 +4,7 @@ import { OrderStore, type InternalOrder } from './order-store.js';
 import { ConservativeGate } from './conservative-gate.js';
 import { LiquidityPlanner, type PlannedLevel } from './liquidity-planner.js';
 import { FillGenerator } from './fill-generator.js';
+import { LocalLiquidityTracker } from './local-liquidity.js';
 import type {
   DepthDiff,
   Engine,
@@ -75,6 +76,7 @@ export class EngineImpl implements Engine {
   private readonly conservativeGate: ConservativeGate;
   private readonly liquidityPlanner: LiquidityPlanner;
   private readonly fillGenerator = new FillGenerator();
+  private readonly localLiquidity = new LocalLiquidityTracker();
   private readonly time: EngineTime;
   private readonly streams: EngineOptions['streams'];
   private readonly book: EngineOptions['book'];
@@ -193,6 +195,7 @@ export class EngineImpl implements Engine {
   private handleDepth(diff: DepthDiff): void {
     this.time.advanceTo(diff.ts);
     this.book.applyDiff(diff);
+    this.localLiquidity.reset();
     this.matchOpenMarkets(this.time.getCurrent());
   }
 
@@ -293,7 +296,7 @@ export class EngineImpl implements Engine {
       return;
     }
     this.orderStore.markAwaiting(order, false);
-    const snapshot = this.book.getSnapshot();
+    const snapshot = this.localLiquidity.apply(this.book.getSnapshot());
     const plan = this.liquidityPlanner.planLimit(order, snapshot);
     this.applyPlan(order, plan.levels, plan.exhausted, now);
     if (order.remainingQty > 0n) {
@@ -302,9 +305,10 @@ export class EngineImpl implements Engine {
   }
 
   private executeMarket(order: InternalOrder, now: number): void {
-    const snapshot = this.book.getSnapshot(
+    const depth = this.book.getSnapshot(
       this.liquidityPlanner.getMaxSlippageLevels(),
     );
+    const snapshot = this.localLiquidity.apply(depth);
     const plan = this.liquidityPlanner.planMarket(order, snapshot);
     this.applyPlan(order, plan.levels, plan.exhausted, now, true);
     if (order.remainingQty > 0n) {
@@ -365,6 +369,7 @@ export class EngineImpl implements Engine {
       }
       return;
     }
+    this.localLiquidity.recordConsumption(order.side, fills);
     for (const fill of fills) {
       this.applyFill(order, fill);
     }

@@ -157,6 +157,46 @@ describe('Engine integration', () => {
     tradeStream.close();
   });
 
+  it('does not reuse consumed liquidity without new depth data', async () => {
+    const { engine, depthStream, tradeStream } = await createTestEngine();
+    const events = captureEvents();
+    events.hook(engine);
+
+    depthStream.push(depth(1, 1, [], [[100n, 1n]]));
+    await flushMicrotasks();
+
+    const firstOrder = engine.submitOrder({
+      type: 'MARKET',
+      side: 'BUY',
+      qty: 1n,
+    });
+    await flushMicrotasks();
+
+    const afterFirst = events.log
+      .filter((e) => e.type === 'orderFilled')
+      .map((e) => e.payload as FillEvent)
+      .filter((f) => f.orderId === firstOrder);
+    expect(afterFirst).toHaveLength(1);
+    expect(afterFirst[0]).toMatchObject({ price: 100n, qty: 1n });
+
+    const secondOrder = engine.submitOrder({
+      type: 'MARKET',
+      side: 'BUY',
+      qty: 1n,
+    });
+    await flushMicrotasks();
+
+    const afterSecond = events.log
+      .filter((e) => e.type === 'orderFilled')
+      .map((e) => e.payload as FillEvent)
+      .filter((f) => f.orderId === secondOrder);
+    expect(afterSecond).toHaveLength(0);
+
+    await engine.close();
+    depthStream.close();
+    tradeStream.close();
+  });
+
   it('AC-4: market respects slippage window and keeps remainder', async () => {
     const { engine, depthStream, tradeStream } = await createTestEngine({
       maxSlippageLevels: 1,
