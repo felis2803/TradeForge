@@ -13,6 +13,9 @@ importers:
       '@tradeforge/io-binance':
         specifier: workspace:*
         version: link:packages/io-binance
+      '@tradeforge/loader-binance':
+        specifier: workspace:*
+        version: link:packages/loader-binance
       '@tradeforge/validation':
         specifier: workspace:*
         version: link:packages/validation
@@ -72,12 +75,6 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@22.18.3)
 
-  examples/09-bot-skeleton:
-    dependencies:
-      '@tradeforge/validation':
-        specifier: workspace:*
-        version: link:../../packages/validation
-
   apps/cli:
     dependencies:
       '@tradeforge/core':
@@ -95,6 +92,12 @@ importers:
       fastify:
         specifier: ^4.26.2
         version: 4.29.1
+
+  examples/09-bot-skeleton:
+    dependencies:
+      '@tradeforge/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
 
   packages/core:
     dependencies:
@@ -117,6 +120,25 @@ importers:
       '@types/unzipper':
         specifier: ^0.10.11
         version: 0.10.11
+
+  packages/loader-binance:
+    dependencies:
+      '@tradeforge/core':
+        specifier: workspace:^
+        version: link:../core
+      '@tradeforge/io-binance':
+        specifier: workspace:^
+        version: link:../io-binance
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+      unzipper:
+        specifier: ^0.12.3
+        version: 0.12.3
+    devDependencies:
+      nock:
+        specifier: ^13.5.2
+        version: 13.5.6
 
   packages/schemas:
     devDependencies:
@@ -3239,6 +3261,12 @@ packages:
         integrity: sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==,
       }
 
+  json-stringify-safe@5.0.1:
+    resolution:
+      {
+        integrity: sha512-ZClg6AaYvamvYEE82d3Iyd3vSSIjQ+odgjaTzRuO3s7toCdFKczob2i0zCh7JE8kWn17yvAWhUVxvqGwUalsRA==,
+      }
+
   json5@2.2.3:
     resolution:
       {
@@ -3534,6 +3562,13 @@ packages:
       {
         integrity: sha512-9iN1ka/9zmX1ZvLV9ewJYEk9h7RyRRtqdK0woXcqohu8EWIerfPUjYJPg0ULy0UqP7cslmdGc8xKDJcojlKiaw==,
       }
+
+  nock@13.5.6:
+    resolution:
+      {
+        integrity: sha512-o2zOYiCpzRqSzPj0Zt/dQ/DqZeYoaQ7TUonc/xUPjCGl9WeHpNbxgVvOquXYAaJzI0M9BXV3HTzG0p8IUAbBTQ==,
+      }
+    engines: { node: '>= 10.13' }
 
   node-int64@0.4.0:
     resolution:
@@ -3927,6 +3962,13 @@ packages:
         integrity: sha512-NxNv/kLguCA7p3jE8oL2aEBsrJWgAakBpgmgK6lpPWV+WuOmY6r2/zbAVnP+T8bQlA0nzHXSJSJW0Hq7ylaD2Q==,
       }
     engines: { node: '>= 6' }
+
+  propagate@2.0.1:
+    resolution:
+      {
+        integrity: sha512-vGrhOavPSTz4QVNuBNdcNXePNdNMaO1xj9yBeH1ScQPjk/rhg9sSlCXPhMkFuaNNW/syTvYqsnbIJxMBfRbbag==,
+      }
+    engines: { node: '>= 8' }
 
   proxy-addr@2.0.7:
     resolution:
@@ -6936,6 +6978,8 @@ snapshots:
 
   json-stable-stringify-without-jsonify@1.0.1: {}
 
+  json-stringify-safe@5.0.1: {}
+
   json5@2.2.3: {}
 
   jsonfile@6.2.0:
@@ -7097,6 +7141,14 @@ snapshots:
   neo-async@2.6.2: {}
 
   nested-error-stacks@2.1.1: {}
+
+  nock@13.5.6:
+    dependencies:
+      debug: 4.4.3
+      json-stringify-safe: 5.0.1
+      propagate: 2.0.1
+    transitivePeerDependencies:
+      - supports-color
 
   node-int64@0.4.0: {}
 
@@ -7293,6 +7345,8 @@ snapshots:
     dependencies:
       kleur: 3.0.3
       sisteransi: 1.0.5
+
+  propagate@2.0.1: {}
 
   proxy-addr@2.0.7:
     dependencies:
