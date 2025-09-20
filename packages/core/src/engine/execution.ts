@@ -97,16 +97,53 @@ export async function* executeTimeline(
       continue;
     }
     for (const order of openOrders) {
-      if (remainingTradeQty <= 0n) {
-        break;
-      }
-      if (!crossesLimitPrice(order, trade.price)) {
-        continue;
-      }
+      const crosses = crossesLimitPrice(order, trade.price);
       const remainingOrderQty = getOrderRemainingQty(
         order,
       ) as unknown as bigint;
       if (remainingOrderQty <= 0n) {
+        continue;
+      }
+      if (order.tif === 'FOK') {
+        if (!crosses || remainingTradeQty < remainingOrderQty) {
+          const canceled = orders.cancelOrder(order.id);
+          if (canceled.status === 'CANCELED') {
+            yield {
+              ts: event.ts,
+              kind: 'ORDER_UPDATED',
+              orderId: order.id,
+              patch: buildOrderPatch(canceled),
+            } satisfies ExecutionReport;
+          }
+          continue;
+        }
+      }
+      if (!crosses) {
+        if (order.tif === 'IOC') {
+          const canceled = orders.cancelOrder(order.id);
+          if (canceled.status === 'CANCELED') {
+            yield {
+              ts: event.ts,
+              kind: 'ORDER_UPDATED',
+              orderId: order.id,
+              patch: buildOrderPatch(canceled),
+            } satisfies ExecutionReport;
+          }
+        }
+        continue;
+      }
+      if (remainingTradeQty <= 0n) {
+        if (order.tif === 'IOC') {
+          const canceled = orders.cancelOrder(order.id);
+          if (canceled.status === 'CANCELED') {
+            yield {
+              ts: event.ts,
+              kind: 'ORDER_UPDATED',
+              orderId: order.id,
+              patch: buildOrderPatch(canceled),
+            } satisfies ExecutionReport;
+          }
+        }
         continue;
       }
       const fillQtyRaw = minQty(remainingOrderQty, remainingTradeQty);
@@ -140,6 +177,23 @@ export async function* executeTimeline(
       } satisfies ExecutionReport;
       if (updated.status === 'FILLED') {
         orders.closeOrder(order.id, 'FILLED');
+      }
+    }
+    for (const order of openOrders) {
+      if (
+        order.tif === 'IOC' &&
+        (order.status === 'OPEN' || order.status === 'PARTIALLY_FILLED') &&
+        order.tsCreated <= event.ts
+      ) {
+        const canceled = orders.cancelOrder(order.id);
+        if (canceled.status === 'CANCELED') {
+          yield {
+            ts: event.ts,
+            kind: 'ORDER_UPDATED',
+            orderId: order.id,
+            patch: buildOrderPatch(canceled),
+          } satisfies ExecutionReport;
+        }
       }
     }
   }
