@@ -46,11 +46,9 @@ export class OrderStore {
   ): InternalOrder {
     const order: InternalOrder = {
       id: orderId,
-      clientId: submit.clientId,
       type: submit.type,
       side: submit.side,
       qty: submit.qty,
-      price: submit.price,
       ts: acceptedTs,
       status: 'OPEN',
       remainingQty: submit.qty,
@@ -60,6 +58,12 @@ export class OrderStore {
       lastUpdateTs: acceptedTs,
       request: { ...submit },
     };
+    if (submit.clientId !== undefined) {
+      order.clientId = submit.clientId;
+    }
+    if (submit.price !== undefined) {
+      order.price = submit.price;
+    }
     this.orders.set(orderId, order);
     if (order.awaitingTrade) {
       this.pendingBySide[order.side].add(orderId);
@@ -136,18 +140,23 @@ export class OrderStore {
   }
 
   toView(order: InternalOrder): OrderView {
-    return {
+    const view: OrderView = {
       id: order.id,
-      clientId: order.clientId,
       type: order.type,
       side: order.side,
       qty: order.qty,
-      price: order.price,
       ts: order.ts,
       status: order.status,
       remainingQty: order.remainingQty,
       filledQty: order.filledQty,
     };
+    if (order.clientId !== undefined) {
+      view.clientId = order.clientId;
+    }
+    if (order.price !== undefined) {
+      view.price = order.price;
+    }
+    return view;
   }
 
   private isActive(order: InternalOrder): boolean {
