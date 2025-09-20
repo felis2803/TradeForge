@@ -111,6 +111,11 @@ describe('executeTimeline Time-In-Force', () => {
         ExecutionReport,
         ExecutionReport,
       ];
+      const cancelReports = reports.filter(
+        (report): report is ExecutionReport & { kind: 'ORDER_UPDATED' } =>
+          report.kind === 'ORDER_UPDATED',
+      );
+      expect(cancelReports).toHaveLength(1);
       expect(cancelReport.kind).toBe('ORDER_UPDATED');
       expect(cancelReport.orderId).toBe(order.id);
       expect(cancelReport.patch?.status).toBe('CANCELED');
@@ -158,6 +163,11 @@ describe('executeTimeline Time-In-Force', () => {
         ExecutionReport,
         ExecutionReport,
       ];
+      const cancelReports = reports.filter(
+        (report): report is ExecutionReport & { kind: 'ORDER_UPDATED' } =>
+          report.kind === 'ORDER_UPDATED',
+      );
+      expect(cancelReports).toHaveLength(1);
       expect(fillReport.kind).toBe('FILL');
       expect(fillReport.orderId).toBe(order.id);
       expect(fillReport.fill?.qty).toEqual(toQtyInt('0.600', QTY_SCALE));
@@ -444,6 +454,57 @@ describe('executeTimeline Time-In-Force', () => {
   });
 
   describe('SELL side', () => {
+    it('cancels IOC sell order when price does not cross limit', async () => {
+      const { state, accounts, orders } = createState();
+      const account = accounts.createAccount('sell-ioc-no-cross');
+      accounts.deposit(account.id, 'BTC', toQtyInt('1.000', QTY_SCALE));
+
+      const order = orders.placeOrder({
+        accountId: account.id,
+        symbol: SYMBOL,
+        type: 'LIMIT',
+        side: 'SELL',
+        qty: toQtyInt('1.000', QTY_SCALE),
+        price: toPriceInt('101', PRICE_SCALE),
+        tif: 'IOC',
+      });
+      expect(order.status).toBe('OPEN');
+
+      const reports = await collect(
+        executeTimeline(
+          (async function* () {
+            yield tradeEvent(22, '99', '1.000', 'sell-ioc-skip', 'BUY');
+          })(),
+          state,
+        ),
+      );
+
+      expect(reports).toHaveLength(2);
+      const [cancelReport, endReport] = reports as [
+        ExecutionReport,
+        ExecutionReport,
+      ];
+      const cancelReports = reports.filter(
+        (report): report is ExecutionReport & { kind: 'ORDER_UPDATED' } =>
+          report.kind === 'ORDER_UPDATED',
+      );
+      expect(cancelReports).toHaveLength(1);
+      expect(cancelReport.kind).toBe('ORDER_UPDATED');
+      expect(cancelReport.orderId).toBe(order.id);
+      expect(cancelReport.patch?.status).toBe('CANCELED');
+      expect(endReport.kind).toBe('END');
+
+      const updated = orders.getOrder(order.id);
+      assertOrderSnapshot(updated);
+      expect(updated.status).toBe('CANCELED');
+      expect(updated.executedQty).toEqual(toQtyInt('0', QTY_SCALE));
+      expect(updated.fills).toHaveLength(0);
+
+      const baseBalance = accounts.getBalance(account.id, 'BTC');
+      expect(baseBalance.locked).toBe(0n);
+      expect(Array.from(orders.getOpenOrders(SYMBOL))).toHaveLength(0);
+    });
+
     it('partially fills IOC sell order and cancels remaining volume on same trade', async () => {
       const { state, accounts, orders } = createState();
       const account = accounts.createAccount('sell-ioc-partial');
@@ -475,6 +536,11 @@ describe('executeTimeline Time-In-Force', () => {
         ExecutionReport,
         ExecutionReport,
       ];
+      const cancelReports = reports.filter(
+        (report): report is ExecutionReport & { kind: 'ORDER_UPDATED' } =>
+          report.kind === 'ORDER_UPDATED',
+      );
+      expect(cancelReports).toHaveLength(1);
       expect(fillReport.kind).toBe('FILL');
       expect(fillReport.orderId).toBe(order.id);
       expect(fillReport.fill?.qty).toEqual(toQtyInt('0.600', QTY_SCALE));
