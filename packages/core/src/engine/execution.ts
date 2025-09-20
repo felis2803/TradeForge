@@ -98,9 +98,7 @@ export async function* executeTimeline(
     }
     for (const order of openOrders) {
       const crosses = crossesLimitPrice(order, trade.price);
-      const remainingOrderQty = getOrderRemainingQty(
-        order,
-      ) as unknown as bigint;
+      const remainingOrderQty = getOrderRemainingQty(order);
       if (remainingOrderQty <= 0n) {
         continue;
       }
@@ -179,21 +177,30 @@ export async function* executeTimeline(
         orders.closeOrder(order.id, 'FILLED');
       }
     }
+    const eventTsRaw = event.ts as unknown as number;
     for (const order of openOrders) {
-      if (
-        order.tif === 'IOC' &&
-        (order.status === 'OPEN' || order.status === 'PARTIALLY_FILLED') &&
-        order.tsCreated <= event.ts
-      ) {
-        const canceled = orders.cancelOrder(order.id);
-        if (canceled.status === 'CANCELED') {
-          yield {
-            ts: event.ts,
-            kind: 'ORDER_UPDATED',
-            orderId: order.id,
-            patch: buildOrderPatch(canceled),
-          } satisfies ExecutionReport;
-        }
+      if (order.tif !== 'IOC') {
+        continue;
+      }
+      if (order.status !== 'OPEN' && order.status !== 'PARTIALLY_FILLED') {
+        continue;
+      }
+      const createdTsRaw = order.tsCreated as unknown as number;
+      const updatedTsRaw = order.tsUpdated as unknown as number;
+      const activationTsRaw = order.activated
+        ? Math.min(createdTsRaw, updatedTsRaw)
+        : createdTsRaw;
+      if (activationTsRaw > eventTsRaw) {
+        continue;
+      }
+      const canceled = orders.cancelOrder(order.id);
+      if (canceled.status === 'CANCELED') {
+        yield {
+          ts: event.ts,
+          kind: 'ORDER_UPDATED',
+          orderId: order.id,
+          patch: buildOrderPatch(canceled),
+        } satisfies ExecutionReport;
       }
     }
   }

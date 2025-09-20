@@ -75,11 +75,11 @@ export function compareOrdersForMatch(a: Order, b: Order): number {
   return a.id < b.id ? -1 : 1;
 }
 
-export function getOrderRemainingQty(order: Order): QtyInt {
+export function getOrderRemainingQty(order: Order): bigint {
   const total = order.qty as unknown as bigint;
   const executed = order.executedQty as unknown as bigint;
   const remaining = total - executed;
-  return (remaining > 0n ? remaining : 0n) as QtyInt;
+  return remaining > 0n ? remaining : 0n;
 }
 
 export function crossesLimitPrice(order: Order, tradePrice: PriceInt): boolean {
