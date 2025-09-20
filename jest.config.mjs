@@ -7,8 +7,10 @@ export default {
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@tradeforge/core$': '<rootDir>/packages/core/src/index.ts',
+    '^@tradeforge/core-orderbook$': '<rootDir>/packages/core-orderbook/src/index.ts',
     '^@tradeforge/io-binance$': '<rootDir>/packages/io-binance/src/index.ts',
     '^@tradeforge/schemas$': '<rootDir>/packages/schemas/src/index.ts',
+    '^@tradeforge/schemas/(.*)$': '<rootDir>/packages/schemas/src/$1.schema.json',
     '^@tradeforge/validation$': '<rootDir>/packages/validation/src/index.ts',
   },
   transform: {

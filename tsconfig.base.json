@@ -7,8 +7,10 @@
     "baseUrl": ".",
     "paths": {
       "@tradeforge/core": ["packages/core/src/index.ts"],
+      "@tradeforge/core-orderbook": ["packages/core-orderbook/src/index.ts"],
       "@tradeforge/io-binance": ["packages/io-binance/src/index.ts"],
       "@tradeforge/schemas": ["packages/schemas/src/index.ts"],
+      "@tradeforge/schemas/v1/*": ["packages/schemas/src/v1/*.schema.json"],
       "@tradeforge/validation": ["packages/validation/src/index.ts"]
     },
     "strict": true,

@@ -10,6 +10,9 @@ importers:
       '@tradeforge/core':
         specifier: workspace:*
         version: link:packages/core
+      '@tradeforge/core-orderbook':
+        specifier: workspace:*
+        version: link:packages/core-orderbook
       '@tradeforge/io-binance':
         specifier: workspace:*
         version: link:packages/io-binance
@@ -38,6 +41,9 @@ importers:
       eslint-plugin-prettier:
         specifier: ^5.0.0
         version: 5.5.4(eslint-config-prettier@9.1.2(eslint@9.35.0))(eslint@9.35.0)(prettier@3.6.2)
+      fast-check:
+        specifier: ^3.17.2
+        version: 3.23.2
       fast-glob:
         specifier: ^3.3.2
         version: 3.3.3
@@ -72,12 +78,6 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@22.18.3)
 
-  examples/09-bot-skeleton:
-    dependencies:
-      '@tradeforge/validation':
-        specifier: workspace:*
-        version: link:../../packages/validation
-
   apps/cli:
     dependencies:
       '@tradeforge/core':
@@ -96,11 +96,19 @@ importers:
         specifier: ^4.26.2
         version: 4.29.1
 
+  examples/09-bot-skeleton:
+    dependencies:
+      '@tradeforge/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
+
   packages/core:
     dependencies:
       '@tradeforge/validation':
         specifier: workspace:*
         version: link:../validation
+
+  packages/core-orderbook: {}
 
   packages/io-binance:
     dependencies:
@@ -2398,6 +2406,13 @@ packages:
         integrity: sha512-2Zks0hf1VLFYI1kbh0I5jP3KHHyCHpkfyHBzsSXRFgl/Bg9mWYfMW8oD+PdMPlEwy5HNsR9JutYy6pMeOh61nw==,
       }
     engines: { node: ^14.15.0 || ^16.10.0 || >=18.0.0 }
+
+  fast-check@3.23.2:
+    resolution:
+      {
+        integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==,
+      }
+    engines: { node: '>=8.0.0' }
 
   fast-content-type-parse@1.1.0:
     resolution:
@@ -6274,6 +6289,10 @@ snapshots:
       jest-matcher-utils: 29.7.0
       jest-message-util: 29.7.0
       jest-util: 29.7.0
+
+  fast-check@3.23.2:
+    dependencies:
+      pure-rand: 6.1.0
 
   fast-content-type-parse@1.1.0: {}
 

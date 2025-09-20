@@ -1,0 +1,19 @@
+{
+  "name": "@tradeforge/core-orderbook",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm --out-dir dist",
+    "clean": "rimraf dist",
+    "format": "prettier -w .",
+    "lint": "eslint . --ext .ts",
+    "test": "jest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

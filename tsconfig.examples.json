@@ -9,6 +9,8 @@
     "paths": {
       "@tradeforge/core": ["packages/core/dist/index.d.ts"],
       "@tradeforge/core/*": ["packages/core/dist/*"],
+      "@tradeforge/core-orderbook": ["packages/core-orderbook/dist/index.d.ts"],
+      "@tradeforge/core-orderbook/*": ["packages/core-orderbook/dist/*"],
       "@tradeforge/io-binance": ["packages/io-binance/dist/index.d.ts"],
       "@tradeforge/io-binance/*": ["packages/io-binance/dist/*"],
       "@tradeforge/validation": ["packages/validation/dist/index.d.ts"],
