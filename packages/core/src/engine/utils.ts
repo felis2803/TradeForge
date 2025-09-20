@@ -82,6 +82,23 @@ export function getOrderRemainingQty(order: Order): bigint {
   return remaining > 0n ? remaining : 0n;
 }
 
+export function getTradeAggressorSide(trade: {
+  aggressor?: Side;
+  side?: Side;
+}): Side | undefined {
+  return trade.aggressor ?? trade.side;
+}
+
+export function canMarketOrderExecute(
+  order: Order,
+  params: { remainingTradeQty: bigint },
+): boolean {
+  if (order.type !== 'MARKET') {
+    return false;
+  }
+  return params.remainingTradeQty > 0n;
+}
+
 export function crossesLimitPrice(order: Order, tradePrice: PriceInt): boolean {
   if (order.type === 'MARKET') {
     return true;

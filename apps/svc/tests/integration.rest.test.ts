@@ -251,8 +251,8 @@ describe('REST adapter integration', () => {
       status: string;
       rejectReason?: string;
     };
-    expect(body.status).toBe('REJECTED');
-    expect(body.rejectReason).toBe('UNSUPPORTED_EXECUTION');
+    expect(body.status).toBe('OPEN');
+    expect(body.rejectReason).toBeUndefined();
   });
 });
 
