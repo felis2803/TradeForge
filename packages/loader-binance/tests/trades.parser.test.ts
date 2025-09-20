@@ -34,6 +34,30 @@ test('parses gzipped trade JSONL', async () => {
       s: 'BTCUSDT',
       m: false,
     }),
+    JSON.stringify({
+      time: 1620000000300,
+      price: '100.04',
+      quantity: '0.2',
+      orderSide: 'sell',
+    }),
+    JSON.stringify({
+      time: 1620000000400,
+      price: '99.9',
+      quantity: '0.3',
+      Side: 'b',
+    }),
+    JSON.stringify({
+      time: 1620000000500,
+      price: '100.05',
+      quantity: '0.12',
+      buyerIsMaker: 1,
+    }),
+    JSON.stringify({
+      time: 1620000000600,
+      price: '100.06',
+      quantity: '0.08',
+      buyerMaker: '0',
+    }),
   ].join('\n');
   const buffer = gzipSync(Buffer.from(lines, 'utf8'));
   const file = join(tmpdir(), 'trades.json.gz');
@@ -42,10 +66,14 @@ test('parses gzipped trade JSONL', async () => {
   const trades = await collect(
     parseTradesFile(file, { symbol: 'BTCUSDT', date: '2021-05-01' }),
   );
-  expect(trades).toHaveLength(3);
+  expect(trades).toHaveLength(7);
   expect(trades[0]?.symbol).toBe('BTCUSDT');
   expect(trades[0]?.side).toBe('BUY');
   expect(trades[1]?.side).toBe('SELL');
   expect(trades[2]?.side).toBe('BUY');
+  expect(trades[3]?.side).toBe('SELL');
+  expect(trades[4]?.side).toBe('BUY');
+  expect(trades[5]?.side).toBe('SELL');
+  expect(trades[6]?.side).toBe('BUY');
   rmSync(file);
 });

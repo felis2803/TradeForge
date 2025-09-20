@@ -37,22 +37,57 @@ function extractId(raw: RawTradeRecord): unknown {
   return raw.id ?? raw.tradeId ?? raw.t ?? raw.uid ?? raw.eventId;
 }
 
-function extractSide(raw: RawTradeRecord): string | undefined {
-  const side = raw.side ?? raw.S;
-  if (typeof side === 'string') {
-    const normalized = side.trim().toUpperCase();
-    if (normalized === 'BUY' || normalized === 'SELL') {
-      return normalized;
-    }
+function coerceSide(value: unknown): Side | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === 'BUY' || normalized === 'SELL') {
+    return normalized as Side;
   }
-  const isBuyerMaker = raw.isBuyerMaker ?? raw.m ?? raw.M;
+  if (normalized === 'B') return 'BUY';
+  if (normalized === 'S') return 'SELL';
+  return undefined;
+}
+
+function extractSide(raw: RawTradeRecord): Side | undefined {
+  const explicit =
+    coerceSide(raw.side) ??
+    coerceSide(raw.Side) ??
+    coerceSide(raw.orderSide) ??
+    coerceSide(raw.S);
+  if (explicit) return explicit;
+  const isBuyerMaker =
+    raw.isBuyerMaker ??
+    raw.buyerIsMaker ??
+    raw.m ??
+    raw.M ??
+    raw.isBuyer ??
+    raw.buyerMaker;
   if (typeof isBuyerMaker === 'boolean') {
     return isBuyerMaker ? 'SELL' : 'BUY';
   }
+  if (typeof isBuyerMaker === 'number') {
+    if (isBuyerMaker === 1) return 'SELL';
+    if (isBuyerMaker === 0) return 'BUY';
+    return undefined;
+  }
   if (typeof isBuyerMaker === 'string') {
     const lowered = isBuyerMaker.toLowerCase();
-    if (lowered === 'true' || lowered === '1') return 'SELL';
-    if (lowered === 'false' || lowered === '0') return 'BUY';
+    if (
+      lowered === 'true' ||
+      lowered === '1' ||
+      lowered === 'sell' ||
+      lowered === 'seller'
+    ) {
+      return 'SELL';
+    }
+    if (
+      lowered === 'false' ||
+      lowered === '0' ||
+      lowered === 'buy' ||
+      lowered === 'buyer'
+    ) {
+      return 'BUY';
+    }
   }
   return undefined;
 }
