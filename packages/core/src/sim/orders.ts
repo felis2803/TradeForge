@@ -109,6 +109,14 @@ export class OrdersService {
     reservation.remaining += diff;
   }
 
+  /**
+   * Places an order and establishes the corresponding currency reservation.
+   *
+   * MARKET buys reserve quote balances (extending reservations as fills demand)
+   * while MARKET sells reserve base balances. Reservation adjustments are
+   * idempotent: repeated calls or partial fills reuse the same reservation and
+   * never double-lock funds.
+   */
   placeOrder(input: PlaceOrderInput): Order {
     const account = this.accounts.requireAccount(input.accountId);
     void account; // existence check only
@@ -224,11 +232,34 @@ export class OrdersService {
           };
         }
       } else {
-        order.reserved = {
-          currency: symbolCfg.quote,
-          total: 0n,
-          remaining: 0n,
-        };
+        let reserveTotal = 0n;
+        if (order.type === 'MARKET') {
+          const qtyRaw = toRawQty(order.qty);
+          const best = this.state.orderbook.getBest(order.symbol);
+          const bestAskRaw = best.bestAsk as unknown as bigint | undefined;
+          if (bestAskRaw !== undefined && bestAskRaw > 0n) {
+            const notional = calcNotional(
+              bestAskRaw,
+              qtyRaw,
+              symbolCfg.qtyScale,
+            );
+            const notionalRaw = notional as unknown as bigint;
+            const feeReserve = calcFee(notional, this.state.fee.takerBps);
+            const total = notionalRaw + feeReserve;
+            if (!this.accounts.lock(order.accountId, symbolCfg.quote, total)) {
+              rejected = { reason: 'INSUFFICIENT_FUNDS' };
+            } else {
+              reserveTotal = total;
+            }
+          }
+        }
+        if (!rejected) {
+          order.reserved = {
+            currency: symbolCfg.quote,
+            total: reserveTotal,
+            remaining: reserveTotal,
+          };
+        }
       }
     }
 
@@ -250,6 +281,13 @@ export class OrdersService {
     return order;
   }
 
+  /**
+   * Cancels an order and releases any unused reservation.
+   *
+   * Reservations for MARKET orders may already be partially (or fully)
+   * consumed by fills; cancellation remains idempotent regardless of prior
+   * executions.
+   */
   cancelOrder(id: OrderId): CancelOrderResult {
     const order = this.state.orders.get(id);
     if (!order) {
