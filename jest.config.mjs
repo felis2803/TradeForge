@@ -13,6 +13,7 @@ export default {
     '^@tradeforge/core$': '<rootDir>/packages/core/src/index.ts',
     '^@tradeforge/io-binance$': '<rootDir>/packages/io-binance/src/index.ts',
     '^@tradeforge/loader-binance$': '<rootDir>/packages/loader-binance/src/index.ts',
+    '^@tradeforge/sim$': '<rootDir>/packages/sim/src/index.ts',
     '^@tradeforge/schemas/v1/(.*)$': '<rootDir>/packages/schemas/src/v1/$1.schema.json',
     '^@tradeforge/schemas$': '<rootDir>/packages/schemas/src/index.ts',
     '^@tradeforge/validation$': '<rootDir>/packages/validation/src/index.ts',

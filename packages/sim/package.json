@@ -1,0 +1,21 @@
+{
+  "name": "@tradeforge/sim",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm --out-dir dist",
+    "clean": "rimraf dist",
+    "format": "prettier -w .",
+    "lint": "eslint . --ext .ts",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config ../../jest.config.mjs --testPathPattern packages/sim/tests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0"
+  }
+}
