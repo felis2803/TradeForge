@@ -1,0 +1,34 @@
+{
+  "name": "@tradeforge/loader-binance",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm --out-dir dist",
+    "clean": "rimraf dist",
+    "format": "prettier -w .",
+    "lint": "eslint . --ext .ts",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config ../../jest.config.mjs --testPathPattern packages/loader-binance/tests",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "cli": "tsx src/cli.ts"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@tradeforge/core": "workspace:^",
+    "@tradeforge/io-binance": "workspace:^",
+    "commander": "^13.1.0",
+    "unzipper": "^0.12.3"
+  },
+  "devDependencies": {
+    "nock": "^13.5.2"
+  }
+}

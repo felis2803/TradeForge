@@ -24,7 +24,8 @@
     "examples:ex01:build": "tsc -p tsconfig.examples.json --incremental",
     "examples:ex01:smoke": "node examples/01-basic-replay/smoke.ts",
     "examples:ex09": "node dist-examples/09-bot-skeleton/run.js",
-    "examples:ex09:smoke": "node examples/09-bot-skeleton/smoke.ts"
+    "examples:ex09:smoke": "node examples/09-bot-skeleton/smoke.ts",
+    "loader:binance": "pnpm --filter @tradeforge/loader-binance run cli --"
   },
   "devDependencies": {
     "@types/jest": "^29.5.11",
