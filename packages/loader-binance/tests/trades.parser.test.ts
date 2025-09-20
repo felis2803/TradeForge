@@ -27,6 +27,13 @@ test('parses gzipped trade JSONL', async () => {
       m: true,
       id: '2',
     }),
+    JSON.stringify({
+      time: 1620000000200,
+      price: '100.03',
+      quantity: '0.1',
+      s: 'BTCUSDT',
+      m: false,
+    }),
   ].join('\n');
   const buffer = gzipSync(Buffer.from(lines, 'utf8'));
   const file = join(tmpdir(), 'trades.json.gz');
@@ -35,9 +42,10 @@ test('parses gzipped trade JSONL', async () => {
   const trades = await collect(
     parseTradesFile(file, { symbol: 'BTCUSDT', date: '2021-05-01' }),
   );
-  expect(trades).toHaveLength(2);
+  expect(trades).toHaveLength(3);
   expect(trades[0]?.symbol).toBe('BTCUSDT');
   expect(trades[0]?.side).toBe('BUY');
   expect(trades[1]?.side).toBe('SELL');
+  expect(trades[2]?.side).toBe('BUY');
   rmSync(file);
 });

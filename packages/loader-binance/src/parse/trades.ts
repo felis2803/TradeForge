@@ -38,9 +38,12 @@ function extractId(raw: RawTradeRecord): unknown {
 }
 
 function extractSide(raw: RawTradeRecord): string | undefined {
-  const side = raw.side ?? raw.S ?? raw.s;
+  const side = raw.side ?? raw.S;
   if (typeof side === 'string') {
-    return side.toUpperCase();
+    const normalized = side.trim().toUpperCase();
+    if (normalized === 'BUY' || normalized === 'SELL') {
+      return normalized;
+    }
   }
   const isBuyerMaker = raw.isBuyerMaker ?? raw.m ?? raw.M;
   if (typeof isBuyerMaker === 'boolean') {
