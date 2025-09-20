@@ -118,10 +118,8 @@ export class OrderBook {
   }
 
   recordTrade(trade: Trade): Readonly<Trade> {
+    this.updateMeta({ sequence: trade.sequence, timestamp: trade.timestamp });
     const entry = this.trades.append(trade);
-    if (trade.sequence !== undefined || trade.timestamp !== undefined) {
-      this.updateMeta({ sequence: trade.sequence, timestamp: trade.timestamp });
-    }
     this.emitTrade(entry);
     return entry;
   }
@@ -173,6 +171,22 @@ export class OrderBook {
   private updateMeta(meta?: Meta): void {
     if (!meta) {
       return;
+    }
+
+    if (meta.sequence !== undefined) {
+      if (this.lastSequence !== null && meta.sequence < this.lastSequence) {
+        throw new Error(
+          `Sequence regression: received ${meta.sequence} after ${this.lastSequence}`,
+        );
+      }
+    }
+
+    if (meta.timestamp !== undefined) {
+      if (this.lastTimestamp !== null && meta.timestamp < this.lastTimestamp) {
+        throw new Error(
+          `Timestamp regression: received ${meta.timestamp} after ${this.lastTimestamp}`,
+        );
+      }
     }
 
     if (meta.sequence !== undefined) {

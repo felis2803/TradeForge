@@ -49,6 +49,17 @@ describe('OrderBook property based diff application', () => {
           expect(snapshot.asks).toEqual<Level[]>(expectedAsks);
           expect(snapshot.bestBid).toEqual(expectedBids[0] ?? null);
           expect(snapshot.bestAsk).toEqual(expectedAsks[0] ?? null);
+          if (
+            snapshot.bestBid &&
+            snapshot.bestAsk &&
+            expectedBids[0] &&
+            expectedAsks[0] &&
+            expectedBids[0].price <= expectedAsks[0].price
+          ) {
+            expect(snapshot.bestBid.price).toBeLessThanOrEqual(
+              snapshot.bestAsk.price,
+            );
+          }
         },
       ),
       { numRuns: 50 },

@@ -49,6 +49,30 @@ describe('OrderBook basic operations', () => {
     expect(snapshot.bestAsk).toEqual({ price: 102.5, size: 1.5 });
   });
 
+  it('respects depth limits in snapshots', () => {
+    const book = new OrderBook();
+
+    book.updateLevel('bid', 105, 1);
+    book.updateLevel('bid', 104, 2);
+    book.updateLevel('bid', 103, 3);
+    book.updateLevel('ask', 106, 1.5);
+    book.updateLevel('ask', 107, 2.5);
+    book.updateLevel('ask', 108, 3.5);
+
+    const snapshot = book.getSnapshot(2);
+
+    expect(snapshot.bids).toEqual<Level[]>([
+      { price: 105, size: 1 },
+      { price: 104, size: 2 },
+    ]);
+    expect(snapshot.asks).toEqual<Level[]>([
+      { price: 106, size: 1.5 },
+      { price: 107, size: 2.5 },
+    ]);
+    expect(snapshot.bestBid).toEqual({ price: 105, size: 1 });
+    expect(snapshot.bestAsk).toEqual({ price: 106, size: 1.5 });
+  });
+
   it('emits update events and supports unsubscribe', () => {
     const book = new OrderBook();
     const updates: unknown[] = [];
@@ -68,6 +92,18 @@ describe('OrderBook basic operations', () => {
 
     book.updateLevel('bid', 98, 0.75);
     expect(updates).toHaveLength(2);
+  });
+
+  it('does not emit update when removing non-existent level', () => {
+    const book = new OrderBook();
+    const updates: unknown[] = [];
+
+    book.onUpdate((update) => updates.push(update));
+
+    const removed = book.updateLevel('bid', 99.5, 0);
+
+    expect(removed).toBe(false);
+    expect(updates).toHaveLength(0);
   });
 
   it('applies L2 diff updates and tracks metadata', () => {
@@ -102,6 +138,63 @@ describe('OrderBook basic operations', () => {
     expect(snapshot.timestamp).toBe(2_000);
     expect(snapshot.bestBid).toEqual({ price: 99.5, size: 2 });
     expect(snapshot.bestAsk).toEqual({ price: 101, size: 1 });
+  });
+
+  it('enforces non-decreasing sequence and timestamp metadata', () => {
+    const book = new OrderBook();
+
+    book.applyDiff({
+      sequence: 5,
+      timestamp: 1_000,
+      bids: [{ price: 100, size: 1 }],
+    });
+
+    expect(() =>
+      book.applyDiff({ sequence: 4, bids: [{ price: 99, size: 1 }] }),
+    ).toThrow(/Sequence regression/);
+
+    expect(() =>
+      book.applyDiff({
+        sequence: 6,
+        timestamp: 900,
+        bids: [{ price: 101, size: 1 }],
+      }),
+    ).toThrow(/Timestamp regression/);
+
+    book.applyDiff({ sequence: 6, timestamp: 1_500, bids: [] });
+
+    expect(() =>
+      book.recordTrade({
+        price: 101,
+        size: 0.1,
+        side: 'ask',
+        timestamp: 1_400,
+        sequence: 6,
+      }),
+    ).toThrow(/Timestamp regression/);
+
+    expect(() =>
+      book.recordTrade({
+        price: 101,
+        size: 0.1,
+        side: 'bid',
+        timestamp: 1_600,
+        sequence: 5,
+      }),
+    ).toThrow(/Sequence regression/);
+
+    expect(() =>
+      book.recordTrade({
+        price: 101,
+        size: 0.1,
+        side: 'bid',
+        timestamp: 1_600,
+        sequence: 6,
+      }),
+    ).not.toThrow();
+
+    expect(book.sequence).toBe(6);
+    expect(book.timestamp).toBe(1_600);
   });
 
   it('records trades and exposes iterator', () => {

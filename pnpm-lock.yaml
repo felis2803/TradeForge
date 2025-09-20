@@ -42,7 +42,7 @@ importers:
         specifier: ^5.0.0
         version: 5.5.4(eslint-config-prettier@9.1.2(eslint@9.35.0))(eslint@9.35.0)(prettier@3.6.2)
       fast-check:
-        specifier: ^3.17.2
+        specifier: ^3.23.2
         version: 3.23.2
       fast-glob:
         specifier: ^3.3.2

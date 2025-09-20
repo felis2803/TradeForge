@@ -49,3 +49,12 @@ for (const trade of book.iterateTrades({
 ```
 
 See [`examples/_data/orderbook-demo.ts`](../../examples/_data/orderbook-demo.ts) for a runnable sample.
+
+## Invariants
+
+- Diff metadata (`sequence`, `timestamp`) must be non-decreasing. Older values
+  are rejected to prevent replay regressions.
+- Levels with non-positive sizes are treated as deletions and will not emit
+  update events if the level does not exist.
+- Bid/ask books remain individually sorted; crossed states may appear if the
+  incoming feed itself is crossed.
