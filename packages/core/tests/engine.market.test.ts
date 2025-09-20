@@ -10,6 +10,7 @@ import {
   type ExecutionReport,
   type MergedEvent,
   type Order,
+  type OrderbookBest,
   type SymbolId,
   type TimestampMs,
   type Trade,
@@ -33,7 +34,7 @@ function notional(price: string, qty: string): bigint {
   return (rawPrice(price) * rawQty(qty)) / QTY_DENOM;
 }
 
-function createState() {
+function createState(options: { best?: Record<string, OrderbookBest> } = {}) {
   const state = new ExchangeState({
     symbols: {
       [SYMBOL as unknown as string]: {
@@ -44,7 +45,7 @@ function createState() {
       },
     },
     fee: { makerBps: FEE_BPS.makerBps, takerBps: FEE_BPS.takerBps },
-    orderbook: new StaticMockOrderbook({ best: {} }),
+    orderbook: new StaticMockOrderbook({ best: options.best ?? {} }),
   });
   const accounts = new AccountsService(state);
   const orders = new OrdersService(state, accounts);
@@ -280,6 +281,12 @@ describe('executeTimeline: MARKET orders', () => {
     );
     expect(orderFillReports).toHaveLength(1);
     expect(orderFillReports[0]?.fill?.tradeRef).toBe('x2');
+    expect(
+      reports.filter(
+        (report) =>
+          report.kind === 'ORDER_UPDATED' && report.orderId === order.id,
+      ),
+    ).toHaveLength(0);
 
     const restingUpdated = orders.getOrder(restingOrder.id);
     expect(restingUpdated.status).toBe('FILLED');
@@ -326,6 +333,7 @@ describe('executeTimeline: MARKET orders', () => {
     );
     expect(cancelReports).toHaveLength(1);
     expect(cancelReports[0]?.patch?.status).toBe('CANCELED');
+    expect(cancelReports[0]?.orderId).toBe(order.id);
 
     const updated = orders.getOrder(order.id);
     expect(updated.status).toBe('CANCELED');
@@ -418,15 +426,26 @@ describe('executeTimeline: MARKET orders', () => {
     const fills = reports.filter((report) => report.kind === 'FILL');
     expect(fills).toHaveLength(1);
     expect(fills[0]?.fill?.qty).toEqual(toQtyInt('0.4', QTY_SCALE));
+    expect(fills[0]?.orderId).toBe(stopOrder.id);
     const cancels = reports.filter((report) => report.kind === 'ORDER_UPDATED');
     expect(cancels).toHaveLength(1);
+    expect(cancels[0]?.orderId).toBe(stopOrder.id);
     expect(cancels[0]?.patch?.status).toBe('CANCELED');
+    expect(reports.filter((report) => report.kind === 'END')).toHaveLength(1);
 
     const updated = orders.getOrder(stopOrder.id);
     expect(updated.status).toBe('CANCELED');
     expect(updated.executedQty).toEqual(toQtyInt('0.4', QTY_SCALE));
+    expect(updated.fees.taker).toEqual(
+      calcFee(notional('100', '0.4'), FEE_BPS.takerBps),
+    );
+    expect(updated.reserved?.remaining ?? 0n).toBe(0n);
     const balances = accounts.getBalance(buyer.id, 'USDT');
     expect(balances.locked).toBe(0n);
+    const partialNotional = notional('100', '0.4');
+    const totalSpend =
+      partialNotional + calcFee(partialNotional, FEE_BPS.takerBps);
+    expect(balances.free).toEqual(deposit - totalSpend);
   });
 
   it('resolves priority deterministically when LIMIT and MARKET share a side', async () => {
@@ -478,8 +497,11 @@ describe('executeTimeline: MARKET orders', () => {
     expect(updatedMarket.status).toBe('FILLED');
   });
 
-  it('tracks taker fees and reserves for partial MARKET fills without leaks', async () => {
-    const { state, accounts, orders } = createState();
+  it('reserves quote for BUY MARKET across partial fills and refunds leftover quote', async () => {
+    const bestAsk = toPriceInt('120', PRICE_SCALE);
+    const { state, accounts, orders } = createState({
+      best: { [SYMBOL as unknown as string]: { bestAsk } },
+    });
     const buyer = accounts.createAccount('partial-buyer');
     const deposit = rawPrice('5000');
     accounts.deposit(buyer.id, 'USDT', deposit);
@@ -494,44 +516,83 @@ describe('executeTimeline: MARKET orders', () => {
     });
     expect(order.status).toBe('OPEN');
 
+    const expectedInitialNotional = notional('120', '1');
+    const expectedInitialFee = calcFee(
+      expectedInitialNotional,
+      FEE_BPS.takerBps,
+    );
+    const expectedInitialLock = expectedInitialNotional + expectedInitialFee;
+    expect(order.reserved?.currency).toBe('USDT');
+    expect(order.reserved?.total).toEqual(expectedInitialLock);
+    expect(order.reserved?.remaining).toEqual(expectedInitialLock);
+    const balanceAfterPlacement = accounts.getBalance(buyer.id, 'USDT');
+    expect(balanceAfterPlacement.locked).toEqual(expectedInitialLock);
+    expect(balanceAfterPlacement.free).toEqual(deposit - expectedInitialLock);
+
     const events = [
       tradeEvent(1, '100', '0.4', { id: 'p1', side: 'BUY' }),
-      tradeEvent(2, '102', '0.3', { id: 'p2', side: 'BUY' }),
-      tradeEvent(3, '103', '0.3', { id: 'p3', side: 'BUY' }),
+      tradeEvent(2, '110', '0.3', { id: 'p2', side: 'BUY' }),
+      tradeEvent(3, '115', '0.3', { id: 'p3', side: 'BUY' }),
     ];
 
-    const reports = await collect(
-      executeTimeline(
-        (async function* () {
-          for (const event of events) {
-            yield event;
-          }
-        })(),
-        state,
-      ),
+    async function* stream() {
+      for (const event of events) {
+        yield event;
+      }
+    }
+
+    const iterator = executeTimeline(stream(), state)[Symbol.asyncIterator]();
+
+    const notionals = [
+      notional('100', '0.4'),
+      notional('110', '0.3'),
+      notional('115', '0.3'),
+    ];
+    const fees = notionals.map((value) => calcFee(value, FEE_BPS.takerBps));
+    const spends = notionals.map((value, index) => value + fees[index]!);
+
+    const firstFill = await iterator.next();
+    expect(firstFill.value?.kind).toBe('FILL');
+    expect(firstFill.value?.fill?.qty).toEqual(toQtyInt('0.4', QTY_SCALE));
+    const balancesAfterFirst = accounts.getBalance(buyer.id, 'USDT');
+    expect(balancesAfterFirst.locked).toEqual(expectedInitialLock - spends[0]!);
+    expect(balancesAfterFirst.free).toEqual(deposit - expectedInitialLock);
+
+    const secondFill = await iterator.next();
+    expect(secondFill.value?.kind).toBe('FILL');
+    expect(secondFill.value?.fill?.qty).toEqual(toQtyInt('0.3', QTY_SCALE));
+    const balancesAfterSecond = accounts.getBalance(buyer.id, 'USDT');
+    expect(balancesAfterSecond.locked).toEqual(
+      expectedInitialLock - spends[0]! - spends[1]!,
+    );
+    expect(balancesAfterSecond.free).toEqual(deposit - expectedInitialLock);
+
+    const thirdFill = await iterator.next();
+    expect(thirdFill.value?.kind).toBe('FILL');
+    expect(thirdFill.value?.fill?.qty).toEqual(toQtyInt('0.3', QTY_SCALE));
+    const balancesAfterThird = accounts.getBalance(buyer.id, 'USDT');
+    expect(balancesAfterThird.locked).toEqual(
+      expectedInitialLock - spends[0]! - spends[1]! - spends[2]!,
     );
 
-    const fillReports = reports.filter((report) => report.kind === 'FILL');
-    expect(fillReports).toHaveLength(3);
+    const endReport = await iterator.next();
+    expect(endReport.value?.kind).toBe('END');
+    const done = await iterator.next();
+    expect(done.done).toBe(true);
 
     const updated = orders.getOrder(order.id);
+    expectOrderSnapshot(updated);
     expect(updated.status).toBe('FILLED');
     expect(updated.executedQty).toEqual(qty);
     expect(updated.fills).toHaveLength(3);
 
-    const notionals = [
-      notional('100', '0.4'),
-      notional('102', '0.3'),
-      notional('103', '0.3'),
-    ];
     const totalNotional = notionals.reduce((acc, value) => acc + value, 0n);
-    const totalFee = notionals
-      .map((value) => calcFee(value, FEE_BPS.takerBps))
-      .reduce((acc, value) => acc + value, 0n);
+    const totalFee = fees.reduce((acc, value) => acc + value, 0n);
     expect(updated.cumulativeQuote).toEqual(
       totalNotional as unknown as Order['cumulativeQuote'],
     );
     expect(updated.fees.taker).toEqual(totalFee);
+    expect(updated.reserved?.total).toEqual(expectedInitialLock);
     expect(updated.reserved?.remaining ?? 0n).toBe(0n);
 
     const quoteBalance = accounts.getBalance(buyer.id, 'USDT');

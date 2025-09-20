@@ -107,6 +107,8 @@ export async function* executeTimeline(
       }
       const isMarketOrder = order.type === 'MARKET';
       if (isMarketOrder) {
+        // remainingTradeQty already accounts for earlier (more prioritized) fills,
+        // so MARKET orders deterministically consume whatever liquidity is left.
         const canExecute = canMarketOrderExecute(order, {
           remainingTradeQty,
         });
@@ -179,6 +181,8 @@ export async function* executeTimeline(
         ...(tradeAggressorSide ? { sourceAggressor: tradeAggressorSide } : {}),
       });
       const updated = orders.applyFill(order.id, fill);
+      // Trade participation flows from high to low priority; shrinking remainingTradeQty
+      // keeps later MARKET orders aligned with that deterministic order.
       remainingTradeQty -= fillQtyRaw;
       yield {
         ts: event.ts,
@@ -195,6 +199,9 @@ export async function* executeTimeline(
     // IOC orders that did not finish during this trade cancel at event close.
     for (const order of openOrders) {
       if (order.tif !== 'IOC') {
+        continue;
+      }
+      if (order.status === 'CANCELED' || order.status === 'FILLED') {
         continue;
       }
       if (order.status !== 'OPEN' && order.status !== 'PARTIALLY_FILLED') {

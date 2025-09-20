@@ -75,6 +75,12 @@ export function compareOrdersForMatch(a: Order, b: Order): number {
   return a.id < b.id ? -1 : 1;
 }
 
+/**
+ * Computes outstanding order quantity purely from the executed base amount.
+ *
+ * The calculation intentionally ignores price information so MARKET orders
+ * remain deterministic regardless of trade pricing.
+ */
 export function getOrderRemainingQty(order: Order): bigint {
   const total = order.qty as unknown as bigint;
   const executed = order.executedQty as unknown as bigint;
@@ -89,6 +95,12 @@ export function getTradeAggressorSide(trade: {
   return trade.aggressor ?? trade.side;
 }
 
+/**
+ * Checks whether a MARKET order can consume the current trade liquidity.
+ *
+ * Price is intentionally absent: MARKET execution relies solely on the
+ * remaining trade size and deterministic order priority.
+ */
 export function canMarketOrderExecute(
   order: Order,
   params: { remainingTradeQty: bigint },
