@@ -1,71 +1,70 @@
-# TradeForge Web Interface
+# Веб-интерфейс TradeForge
 
-## Overview
+## Обзор
 
-- The TradeForge web interface wraps the sandbox backend so you can configure simulated exchange runs, start/pause/stop execution, plug in proprietary bots, and watch balances in real time.
-- The current MVP supports a single local operator with one active run at a time. Balances are tracked per bot; positions, PnL attribution, and multi-user workflows are out of scope for this release.
+- Веб-интерфейс TradeForge надстраивается над песочницей-бэкендом и позволяет настраивать симуляции биржи, запускать, приостанавливать и останавливать исполнение, подключать собственные боты и наблюдать за балансами в реальном времени.
+- Текущий MVP рассчитан на одного локального оператора и допускает только один активный запуск одновременно. Балансы ведутся по каждому боту; позиции, атрибуция PnL и многопользовательские сценарии в этой версии отсутствуют.
 
-## Prerequisites
+## Предварительные требования
 
-- Node.js 20 or newer (check with `node -v`).
-- The pnpm workspace tooling configured on your machine.
-- Clone this repository and install dependencies once from the root:
+- Node.js версии 20 или новее (проверьте командой `node -v`).
+- Установленный инструментарий pnpm workspace.
+- Склонируйте репозиторий и один раз установите зависимости из корневой директории:
 
   ```bash
   pnpm -w i
   ```
 
-## Launching the services
+## Запуск сервисов
 
-> **Run start note**: Speed is configured during preflight via `POST /v1/runs` and applies only to history mode. The `POST /v1/runs/start` endpoint starts the run using the previously configured parameters and does not accept a `speed` body.
+> **Примечание о скорости запуска.** Параметр `speed` задаётся на этапе предварительной конфигурации через `POST /v1/runs` и работает только в историческом режиме. Метод `POST /v1/runs/start` просто запускает симуляцию с уже сохранёнными параметрами и не принимает поле `speed` в теле запроса.
 
-1. **Start the backend (Fastify service).**
+1. **Запустите бэкенд (сервис Fastify).**
 
    ```bash
    cd apps/svc
    pnpm dev
    ```
 
-   - Listens on `http://localhost:3001` by default. Override `PORT`/`HOST` if you need different bindings.
-   - Set `RUNS_DIR` to customize where run artifacts (configs, orders, trades, balances) are persisted. By default they land in `<repo>/runs/`.
-   - If you serve the UI from a different origin, define `CORS_ORIGIN` (comma-separated allowlist such as `http://localhost:5173`). When unset the dev server automatically allows the default UI origin.
+   - По умолчанию сервис слушает `http://localhost:3001`. При необходимости переопределите `PORT` и/или `HOST`.
+   - Задайте `RUNS_DIR`, чтобы изменить каталог, в котором сохраняются артефакты запусков (конфигурации, ордера, сделки, балансы). По умолчанию они попадают в `<repo>/runs/`.
+   - Если UI обслуживается с другого происхождения, определите `CORS_ORIGIN` (список адресов через запятую, например `http://localhost:5173`). Если переменная не задана, dev-сервер автоматически разрешает стандартное происхождение UI.
 
-2. **Start the frontend (React/Vite UI).**
+2. **Запустите фронтенд (React/Vite UI).**
 
    ```bash
    cd apps/web
    pnpm dev
    ```
 
-   - The Vite dev server runs on `http://localhost:5173`.
-   - Configure API routing by adding a `.env` (or `.env.local`) file next to `apps/web` with:
+   - Dev-сервер Vite работает на `http://localhost:5173`.
+   - Настройте маршрутизацию к API, добавив файл `.env` (или `.env.local`) рядом с `apps/web` и указав:
 
      ```bash
      VITE_API_BASE=http://localhost:3001
      ```
 
-     > **Fees and integer fields**:
+     > **Комиссии и целочисленные поля**
      >
-     > - Commissions are in **basis points** (integers): `makerBp: 1`, `takerBp: 5`.
-     > - Monetary/quantity fields ending with `Int` are **strings** in minimal units (JSON-safe).
+     > - Комиссии указываются в **базисных пунктах** (целые числа): `makerBp: 1`, `takerBp: 5`.
+     > - Денежные суммы и количества, оканчивающиеся на `Int`, — это **строки** в минимальных единицах (безопасны для JSON).
+     >
+     > Используйте переменную `VITE_API_BASE`, если бэкенд доступен по нестандартному URL, в контейнере или через туннель.
 
-     Use this when the backend is exposed on a non-default URL, container, or tunnel.
+## Работа с веб-интерфейсом
 
-## Using the web UI
+1. Откройте в браузере `http://localhost:5173`.
+2. Стартовая страница разделена на три панели:
 
-1. Open `http://localhost:5173` in your browser.
-2. The landing page is split into three panels:
+   <!-- TODO: добавить скриншот интерфейса -->
 
-   <!-- TODO: add UI screenshot -->
-
-   ### Preflight configuration
-   - Choose **Биржа** (exchange) and **Оператор данных** (data operator) to describe the sandbox source.
-   - Select the run **Режим** (`Realtime` or `History`). Historical mode unlocks a date range picker and playback speed control.
-     Speed is set during run configuration (`POST /v1/runs`) and applies only to history mode.
-   - Manage instrument rows to define symbols and their maker/taker commission basis points. Add extra rows for multi-asset simulations.
-   - Set operational limits such as **Максимум активных ордеров** and **Таймаут heartbeat (сек)**.
-   - Toggle **Статус данных** when your historical dataset is ready to run.
-   - Press **Применить** to POST the configuration to `/v1/runs`.
+   ### Предварительная конфигурация
+   - Выберите **Биржу** и **Оператора данных**, чтобы описать источник данных песочницы.
+   - Установите **Режим запуска** (`Realtime` или `History`). Исторический режим открывает выбор диапазона дат и управление скоростью воспроизведения. Скорость задаётся при конфигурации запуска (`POST /v1/runs`) и действует только в режиме истории.
+   - Управляйте строками инструментов, чтобы определить тикеры и их комиссии мейкера/тейкера в базисных пунктах. Добавляйте дополнительные строки для мультиактивных симуляций.
+   - Настройте операционные лимиты, такие как **Максимум активных ордеров** и **Таймаут heartbeat (сек)**.
+   - Включите **Статус данных**, когда исторический набор данных готов к запуску.
+   - Нажмите **Применить**, чтобы отправить конфигурацию в `/v1/runs`.
 
      ```bash
      curl -X POST http://localhost:3001/v1/runs \
@@ -88,24 +87,24 @@
        }'
      ```
 
-   ### Run control
-   - The status strip mirrors `GET /v1/runs/status` and updates every five seconds.
-   - **Старт** triggers `POST /v1/runs/start` to resume execution with the previously configured parameters.
-   - **Пауза** (`POST /v1/runs/pause`) and **Стоп** (`POST /v1/runs/stop`) gracefully snapshot the state so you can resume or replay later.
+   ### Управление запуском
+   - Строка статуса отражает `GET /v1/runs/status` и обновляется каждые пять секунд.
+   - **Старт** вызывает `POST /v1/runs/start`, чтобы продолжить выполнение с ранее заданными параметрами.
+   - **Пауза** (`POST /v1/runs/pause`) и **Стоп** (`POST /v1/runs/stop`) аккуратно сохраняют состояние, чтобы позже можно было продолжить или проиграть запуск заново.
 
-   ### Bots panel
-   - Lists connected bots with their declared initial balance and the latest balance snapshot.
-   - Balances stream via WebSocket `balance.update` messages; reconnecting bots keep their previous balances and history.
+   ### Панель ботов
+   - Отображает подключённых ботов с их исходным балансом и последней моментальной копией баланса.
+   - Балансы транслируются через WebSocket-сообщения `balance.update`; при переподключении бот сохраняет прежние балансы и историю.
 
-## Connecting bots
+## Подключение ботов
 
-> **Identity & Auth (MVP)**: No tokens/auth. A bot identifies by `botName`. On disconnect, state persists; reconnect with the **same `botName`** resumes the session. Avoid name collisions if multiple people test simultaneously.
+> **Идентификация и авторизация (MVP).** Токены и авторизация отсутствуют. Бот идентифицируется по полю `botName`. После отключения состояние сохраняется; повторное подключение с тем же **`botName`** возобновляет сессию. Избегайте конфликтов имён, если тестируют несколько человек.
 >
-> **Envelope timestamp (`ts`)**: we include `ts` (epoch ms) in examples for tracing; the server may ignore it.
+> **Метка времени в конверте (`ts`).** В примерах используется `ts` (миллисекунды эпохи) для трассировки; сервер может игнорировать значение.
 
-### Session lifecycle
+### Жизненный цикл сессии
 
-Bots connect to `ws://localhost:3001/ws`. Use secure WebSocket (`wss://`) if you proxy through TLS. Immediately after the socket opens, send a `hello` envelope. Integer quantities, prices, and balances should be encoded as strings to preserve precision.
+Боты подключаются к `ws://localhost:3001/ws`. Используйте защищённое соединение (`wss://`), если проксируете через TLS. Сразу после открытия соединения отправьте конверт `hello`. Количества, цены и балансы в целых числах следует кодировать строками, чтобы сохранить точность.
 
 ```json
 {
@@ -118,7 +117,7 @@ Bots connect to `ws://localhost:3001/ws`. Use secure WebSocket (`wss://`) if you
 }
 ```
 
-The service replies with `hello` describing configured symbols, fees, and run limits:
+Сервис отвечает `hello` с описанием настроенных символов, комиссий и лимитов запуска:
 
 ```json
 {
@@ -136,19 +135,19 @@ The service replies with `hello` describing configured symbols, fees, and run li
 
 ### Heartbeat
 
-> **Timestamp note**: Examples may include `ts` (epoch ms). Both with and without `ts` are accepted; `ts` is recommended for tracing.
+> **Примечание о метке времени.** Примеры могут включать `ts` (миллисекунды эпохи). Допустимы варианты как с `ts`, так и без него; метка рекомендуется для трассировки.
 
-Maintain liveness by sending heartbeats faster than the configured `heartbeatTimeoutSec`:
+Поддерживайте соединение в живом состоянии, отправляя heartbeat быстрее, чем заданный `heartbeatTimeoutSec`:
 
 ```json
 { "type": "heartbeat", "ts": 1700000000000, "payload": {} }
 ```
 
-The server responds with its own `heartbeat` and logs a warning if bot heartbeats lapse.
+Сервер отвечает собственным `heartbeat` и пишет предупреждение в лог, если heartbeats от бота прекращаются.
 
-### Orders
+### Ордеры
 
-Place orders via WebSocket:
+Размещайте ордера через WebSocket:
 
 ```json
 {
@@ -169,15 +168,15 @@ Place orders via WebSocket:
 }
 ```
 
-> **STOP trigger source**: STOP orders (stop-market/stop-limit) trigger on the **last trade** price (not best bid/ask).
+> **Источник триггера для STOP.** STOP-ордера (stop-market/stop-limit) активируются по цене **последней сделки**, а не по лучшему бид/аск.
 
-Successful submissions generate:
+Успешная отправка генерирует:
 
-- `order.ack` with the assigned `serverOrderId` and acceptance status.
-- `order.update` when the order transitions to `open`, `filled`, or `canceled`.
-- `order.fill` plus a `trade` record for executed volume, including computed taker/maker fees.
+- `order.ack` с присвоенным `serverOrderId` и результатом приёма.
+- `order.update`, когда ордер переходит в состояние `open`, `filled` или `canceled`.
+- `order.fill` и запись `trade` для исполненного объёма с учётом рассчитанных комиссий тейкера/мейкера.
 
-### Order cancel
+### Отмена ордера
 
 ```json
 {
@@ -187,7 +186,7 @@ Successful submissions generate:
 }
 ```
 
-### Rejections (structured codes)
+### Отказы (структурированные коды)
 
 ```json
 {
@@ -209,15 +208,15 @@ Successful submissions generate:
 }
 ```
 
-A successful cancel returns `order.cancel` with the same `serverOrderId`; failures emit `order.reject` codes such as `NOT_FOUND`, `RATE_LIMIT`, or `VALIDATION`.
+Успешная отмена возвращает `order.cancel` с тем же `serverOrderId`; при ошибках приходят `order.reject` с кодами `NOT_FOUND`, `RATE_LIMIT`, `VALIDATION` и т.д.
 
-### Balance updates
+### Обновления баланса
 
-Balance deltas arrive as `balance.update` messages. The backend preserves bot state, so reconnecting with the same `botName` restores balances and active orders.
+Изменения балансов приходят сообщениями `balance.update`. Бэкенд сохраняет состояние бота, поэтому переподключение с тем же `botName` восстанавливает балансы и активные ордера.
 
-### Depth streaming (L2)
+### Трансляция глубины рынка (L2)
 
-- On subscribe/connect the server emits a full L2 **snapshot** for each configured symbol:
+- При подписке/подключении сервер отправляет полный **снимок** стакана L2 по каждому настроенному символу:
 
 ```json
 {
@@ -231,7 +230,7 @@ Balance deltas arrive as `balance.update` messages. The backend preserves bot st
 }
 ```
 
-- Then it streams **diff updates** without aggregation:
+- Затем транслируются **диффы** без агрегации:
 
 ```json
 {
@@ -245,38 +244,38 @@ Balance deltas arrive as `balance.update` messages. The backend preserves bot st
 }
 ```
 
-`qtyInt == "0"` means remove the price level.
+`qtyInt == "0"` означает удаление ценового уровня.
 
-### WebSocket message summary
+### Сводка сообщений WebSocket
 
-| Direction    | Message types                                                             | Purpose                                                    |
-| ------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| bot → server | `hello`, `heartbeat`, `order.place`, `order.cancel`                       | Identify the bot, maintain the session, and manage orders. |
-| server → bot | `hello`, `heartbeat`                                                      | Confirm run configuration and acknowledge liveness.        |
-| server → bot | `order.ack`, `order.update`, `order.fill`, `order.cancel`, `order.reject` | Reflect order lifecycle events and errors.                 |
-| server → bot | `balance.update`, `depth.snapshot`, `depth.diff`                          | Stream state changes for balances and L2 order books.      |
+| Направление  | Типы сообщений                                                            | Назначение                                                    |
+| ------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| бот → сервер | `hello`, `heartbeat`, `order.place`, `order.cancel`                       | Идентификация бота, поддержание сессии и управление ордерами. |
+| сервер → бот | `hello`, `heartbeat`                                                      | Подтверждение конфигурации запуска и контроль активности.     |
+| сервер → бот | `order.ack`, `order.update`, `order.fill`, `order.cancel`, `order.reject` | Отражение жизненного цикла ордеров и связанных ошибок.        |
+| сервер → бот | `balance.update`, `depth.snapshot`, `depth.diff`                          | Трансляция изменений балансов и стаканов L2.                  |
 
-## Persistence and results
+## Хранение и результаты
 
-### Persistence
+### Персистентность
 
-- Artifacts are stored under `runs/{runId}/` (configurable via `RUNS_DIR`).
-- Writes are **atomic** (temp file then rename) to avoid truncated files on crashes.
+- Артефакты сохраняются в `runs/{runId}/` (каталог можно изменить через `RUNS_DIR`).
+- Запись производится **атомарно** (сначала во временный файл, затем переименование), чтобы исключить усечённые файлы при сбоях.
 
-### Artifact inventory
+### Состав артефактов
 
-- `run.json` – configuration snapshot and lifecycle timestamps.
-- `metadata.json` – exchange metadata and heartbeat settings.
-- `orders.json` / `trades.json` – chronological order and fill history.
-- `balances.json` – bot balances as of the last persistence cycle.
-- Re-run historical simulations by reusing the saved configuration with `POST /v1/runs` and pointing bots at the stored dataset.
+- `run.json` — снимок конфигурации и временные метки жизненного цикла.
+- `metadata.json` — сведения о бирже и настройках heartbeat.
+- `orders.json` / `trades.json` — хронологическая история ордеров и сделок.
+- `balances.json` — балансы ботов на момент последнего сохранения.
+- Повторно запускать исторические симуляции можно, переиспользуя сохранённую конфигурацию через `POST /v1/runs` и указывая ботам сохранённый набор данных.
 
-## Examples
+## Примеры
 
-- A minimal Node.js bot emulator lives at [`docs/snippets/bot.js`](snippets/bot.js):
+- Минимальный эмулятор бота на Node.js находится в [`docs/snippets/bot.js`](snippets/bot.js):
 
   ```javascript
-  // Minimal bot emulator reflecting protocol & codes
+  // Минимальный эмулятор бота, демонстрирующий протокол и коды
   const WS = require('ws');
 
   const url = process.env.WS_URL || 'ws://localhost:3001/ws';
@@ -339,17 +338,17 @@ Balance deltas arrive as `balance.update` messages. The backend preserves bot st
   });
   ```
 
-  Run it from the repo root with:
+  Запустите его из корня репозитория:
 
   ```bash
   node docs/snippets/bot.js
   ```
 
-  Expect console logs for the `hello` handshake, `order.ack`/`order.fill` events, and `balance.update` deltas. The web UI will display the `demo-bot` balance tick down with each simulated buy.
+  В консоли появятся сообщения о рукопожатии `hello`, событиях `order.ack`/`order.fill` и дельтах `balance.update`. Веб-интерфейс покажет, как баланс `demo-bot` уменьшается с каждой смоделированной покупкой.
 
-## Troubleshooting
+## Устранение неполадок
 
-- **CORS errors in the browser console** – ensure the backend `CORS_ORIGIN` includes the UI origin and that `VITE_API_BASE` points at the correct backend URL.
-- **`RATE_LIMIT` rejections** – increase `maxActiveOrders` in the Preflight panel or wait for active orders to complete before submitting more.
-- **`VALIDATION` rejections** – double-check payloads: integer fields (`*_Int`) must be stringified whole numbers, required identifiers must be present, and symbols must exist in the configured run.
-- **No balances shown** – verify that bots send periodic heartbeats and that the backend log does not report heartbeat timeouts.
+- **Ошибки CORS в консоли браузера.** Убедитесь, что `CORS_ORIGIN` на бэкенде включает происхождение UI и что `VITE_API_BASE` указывает на правильный адрес бэкенда.
+- **Отказы `RATE_LIMIT`.** Увеличьте `maxActiveOrders` на панели Предварительной конфигурации или дождитесь завершения активных ордеров перед отправкой новых.
+- **Отказы `VALIDATION`.** Проверьте полезные нагрузки: целочисленные поля (`*_Int`) должны быть строками с целыми числами, обязательные идентификаторы присутствуют, а символы существуют в текущем запуске.
+- **Балансы не отображаются.** Убедитесь, что боты отправляют периодические heartbeats, и проверьте, нет ли в логах бэкенда предупреждений о тайм-аутах heartbeat.
