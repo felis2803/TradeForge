@@ -3,8 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "pnpm --filter @tradeforge/schemas --filter @tradeforge/validation --filter @tradeforge/core build",
     "dev": "tsx src/server.ts",
+    "prebuild": "pnpm --filter @tradeforge/schemas --filter @tradeforge/validation --filter @tradeforge/core build",
     "build": "tsc -p tsconfig.json",
+    "prestart": "pnpm --filter @tradeforge/schemas --filter @tradeforge/validation --filter @tradeforge/core build",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"(optional) add eslint later\""
@@ -12,6 +15,7 @@
   "dependencies": {
     "@fastify/cors": "^8.5.0",
     "@fastify/websocket": "^10.0.1",
+    "@tradeforge/core": "workspace:^",
     "fastify": "^4.28.1",
     "pino-pretty": "^11.2.2",
     "zod": "^3.23.8"

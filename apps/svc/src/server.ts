@@ -1,7 +1,19 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import cors from '@fastify/cors';
 
+import {
+  AccountsService,
+  ExchangeState,
+  OrdersService,
+  StaticMockOrderbook,
+  type FeeConfig,
+  type SymbolConfig,
+  toPriceInt,
+} from '@tradeforge/core';
+
+import { registerAccountsRoutes } from './routes/accounts.js';
+import { registerOrdersRoutes } from './routes/orders.js';
 import {
   configureRun,
   getRunConfig,
@@ -25,47 +37,50 @@ import type {
   RunSpeed,
 } from './types.js';
 
-const server = Fastify({
-  logger: true,
-});
+export interface ServiceContext {
+  state: ExchangeState;
+  accounts: AccountsService;
+  orders: OrdersService;
+}
 
-const allowedOriginsEnv = process.env.CORS_ORIGIN;
-const defaultOrigin =
-  process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:5173';
-const allowedOrigins = (allowedOriginsEnv ?? defaultOrigin ?? '')
-  .split(',')
-  .map((value) => value.trim())
-  .filter((value) => value.length > 0);
+const BTCUSDT_CONFIG: SymbolConfig = {
+  base: 'BTC',
+  quote: 'USDT',
+  priceScale: 5,
+  qtyScale: 6,
+};
 
-await server.register(cors, {
-  origin(origin, callback) {
-    if (!allowedOrigins.length || !origin) {
-      callback(null, true);
-      return;
-    }
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-    callback(new Error('origin not allowed'), false);
-  },
-  credentials: true,
-});
+const DEFAULT_SYMBOLS: Record<string, SymbolConfig> = {
+  BTCUSDT: BTCUSDT_CONFIG,
+};
 
-server.log.info(
-  { runsDir: process.env.RUNS_DIR ?? RUNS_ROOT },
-  'persistence directory configured',
-);
+const DEFAULT_FEE: FeeConfig = {
+  makerBps: 5,
+  takerBps: 7,
+};
 
-await server.register(websocket, {
-  options: {
-    clientTracking: true,
-  },
-});
+function createDefaultState(): ExchangeState {
+  const orderbook = new StaticMockOrderbook({
+    best: {
+      BTCUSDT: {
+        bestBid: toPriceInt('27000', BTCUSDT_CONFIG.priceScale),
+        bestAsk: toPriceInt('27001', BTCUSDT_CONFIG.priceScale),
+      },
+    },
+  });
+  return new ExchangeState({
+    symbols: DEFAULT_SYMBOLS,
+    fee: DEFAULT_FEE,
+    orderbook,
+  });
+}
 
-registerWsHandlers(server);
-
-server.get('/v1/health', async () => ({ status: 'ok' }));
+export function createServices(): ServiceContext {
+  const state = createDefaultState();
+  const accounts = new AccountsService(state);
+  const orders = new OrdersService(state, accounts);
+  return { state, accounts, orders };
+}
 
 function toFiniteNumber(value: unknown, fallback: number): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -173,80 +188,140 @@ function normalizeRunConfig(body: unknown): RunConfig {
   };
 }
 
-server.post('/v1/runs', async (request, reply) => {
-  const config = normalizeRunConfig(request.body ?? {});
-  if (!config.instruments.length) {
-    reply.code(400);
-    return { error: 'INSTRUMENTS_REQUIRED' };
-  }
+function registerRunRoutes(server: FastifyInstance): void {
+  server.get('/v1/health', async () => ({ status: 'ok' }));
 
-  configureRun(config);
-  await prepareRunArtifacts(config, getTimestamps());
-  await persistRunStatus(config.id, getSnapshot(), getTimestamps());
+  server.post('/v1/runs', async (request, reply) => {
+    const config = normalizeRunConfig(request.body ?? {});
+    if (!config.instruments.length) {
+      reply.code(400);
+      return { error: 'INSTRUMENTS_REQUIRED' };
+    }
 
-  return { status: 'configured', run: getSnapshot() };
-});
+    configureRun(config);
+    await prepareRunArtifacts(config, getTimestamps());
+    await persistRunStatus(config.id, getSnapshot(), getTimestamps());
 
-server.post('/v1/runs/start', async (request, reply) => {
-  const config = getRunConfig();
-  if (!config) {
-    reply.code(400);
-    return { error: 'RUN_NOT_CONFIGURED' };
-  }
-  const body = (request.body ?? {}) as { speed?: RunSpeed };
-  if (body.speed) {
-    setRunSpeed(body.speed);
-  }
-  setStatus('running');
-  server.log.info({ status: 'running' }, 'run transition');
-  await persistFullState();
-  return { status: 'running', run: getSnapshot() };
-});
+    return { status: 'configured', run: getSnapshot() };
+  });
 
-server.post('/v1/runs/pause', async (request, reply) => {
-  if (!getRunConfig()) {
-    reply.code(400);
-    return { error: 'RUN_NOT_CONFIGURED' };
-  }
-  setStatus('paused');
-  server.log.info({ status: 'paused' }, 'run transition');
-  await persistFullState();
-  return { status: 'paused', run: getSnapshot() };
-});
+  server.post('/v1/runs/start', async (request, reply) => {
+    const config = getRunConfig();
+    if (!config) {
+      reply.code(400);
+      return { error: 'RUN_NOT_CONFIGURED' };
+    }
+    const body = (request.body ?? {}) as { speed?: RunSpeed };
+    if (body.speed) {
+      setRunSpeed(body.speed);
+    }
+    setStatus('running');
+    server.log.info({ status: 'running' }, 'run transition');
+    await persistFullState();
+    return { status: 'running', run: getSnapshot() };
+  });
 
-server.post('/v1/runs/stop', async (request, reply) => {
-  if (!getRunConfig()) {
-    reply.code(400);
-    return { error: 'RUN_NOT_CONFIGURED' };
-  }
-  setStatus('stopped');
-  server.log.info({ status: 'stopped' }, 'run transition');
-  await persistFullState();
-  return { status: 'stopped', run: getSnapshot() };
-});
+  server.post('/v1/runs/pause', async (request, reply) => {
+    if (!getRunConfig()) {
+      reply.code(400);
+      return { error: 'RUN_NOT_CONFIGURED' };
+    }
+    setStatus('paused');
+    server.log.info({ status: 'paused' }, 'run transition');
+    await persistFullState();
+    return { status: 'paused', run: getSnapshot() };
+  });
 
-server.get('/v1/runs/status', async () => {
-  return getSnapshot();
-});
+  server.post('/v1/runs/stop', async (request, reply) => {
+    if (!getRunConfig()) {
+      reply.code(400);
+      return { error: 'RUN_NOT_CONFIGURED' };
+    }
+    setStatus('stopped');
+    server.log.info({ status: 'stopped' }, 'run transition');
+    await persistFullState();
+    return { status: 'stopped', run: getSnapshot() };
+  });
 
-server.get('/v1/bots', async () => {
-  return {
-    bots: listBots().map((bot) => ({
-      botName: bot.botName,
-      initialBalanceInt: bot.initialBalanceInt,
-      currentBalanceInt: bot.currentBalanceInt,
-      connected: bot.connected,
-    })),
-  };
-});
+  server.get('/v1/runs/status', async () => {
+    return getSnapshot();
+  });
 
-const port = Number(process.env.PORT ?? 3001);
-const host = process.env.HOST ?? '0.0.0.0';
+  server.get('/v1/bots', async () => {
+    return {
+      bots: listBots().map((bot) => ({
+        botName: bot.botName,
+        initialBalanceInt: bot.initialBalanceInt,
+        currentBalanceInt: bot.currentBalanceInt,
+        connected: bot.connected,
+      })),
+    };
+  });
+}
 
-try {
+export function createServer(options?: { logger?: boolean }): FastifyInstance {
+  const services = createServices();
+  const server = Fastify({ logger: options?.logger ?? true });
+
+  const allowedOriginsEnv = process.env.CORS_ORIGIN;
+  const defaultOrigin =
+    process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:5173';
+  const allowedOrigins = (allowedOriginsEnv ?? defaultOrigin ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  server.register(cors, {
+    origin(origin, callback) {
+      if (!allowedOrigins.length || !origin) {
+        callback(null, true);
+        return;
+      }
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('origin not allowed'), false);
+    },
+    credentials: true,
+  });
+
+  server.log.info(
+    { runsDir: process.env.RUNS_DIR ?? RUNS_ROOT },
+    'persistence directory configured',
+  );
+
+  server.register(websocket, {
+    options: {
+      clientTracking: true,
+    },
+  });
+
+  server.register(async (instance) => {
+    registerWsHandlers(instance);
+  });
+
+  registerRunRoutes(server);
+  registerAccountsRoutes(server, services);
+  registerOrdersRoutes(server, services);
+
+  return server;
+}
+
+export async function startServer(): Promise<FastifyInstance> {
+  const server = createServer();
+  await server.ready();
+  const port = Number(process.env.PORT ?? 3001);
+  const host = process.env.HOST ?? '0.0.0.0';
   await server.listen({ port, host });
   server.log.info(`TradeForge service listening on ${host}:${port}`);
-} catch (error) {
-  server.log.error(error, 'Failed to start service');
-  process.exit(1);
+  return server;
+}
+
+const invokedPath = process.argv[1] ?? '';
+if (invokedPath.endsWith('server.ts') || invokedPath.endsWith('server.js')) {
+  startServer().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
 }
