@@ -82,9 +82,12 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-4 text-sm text-slate-300">
         <span>
-          Текущий статус: <span className="font-semibold text-slate-100">{status}</span>
+          Текущий статус:{' '}
+          <span className="font-semibold text-slate-100">{status}</span>
         </span>
-        {isFetching && <span className="text-xs text-slate-500">обновляем…</span>}
+        {isFetching && (
+          <span className="text-xs text-slate-500">обновляем…</span>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button

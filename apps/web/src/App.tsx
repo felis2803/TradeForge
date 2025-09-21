@@ -22,7 +22,8 @@ const wsStatusLabel: Record<string, string> = {
 };
 
 const API_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:3001';
+  (import.meta.env.VITE_API_BASE as string | undefined) ??
+  'http://localhost:3001';
 const DEFAULT_WS_BASE = API_BASE.replace(/^http/i, 'ws');
 const WS_URL =
   (import.meta.env.VITE_WS_URL as string | undefined) ??
@@ -30,7 +31,9 @@ const WS_URL =
 
 function App(): JSX.Element {
   const wsClient = useMemo(() => new WsClient(WS_URL), []);
-  const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>('connecting');
+  const [status, setStatus] = useState<'connecting' | 'open' | 'closed'>(
+    'connecting',
+  );
 
   useEffect(() => {
     wsClient.connect();
@@ -54,10 +57,15 @@ function App(): JSX.Element {
           <div className="mx-auto flex max-w-6xl flex-col gap-2 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-2xl font-semibold">TradeForge Sandbox</h1>
-              <p className="text-sm text-slate-400">Модуль настройки и контроля единичного запуска</p>
+              <p className="text-sm text-slate-400">
+                Модуль настройки и контроля единичного запуска
+              </p>
             </div>
             <div className="text-sm text-slate-300">
-              WS статус: <span className="font-medium text-slate-100">{wsStatusLabel[status]}</span>
+              WS статус:{' '}
+              <span className="font-medium text-slate-100">
+                {wsStatusLabel[status]}
+              </span>
             </div>
           </div>
         </header>

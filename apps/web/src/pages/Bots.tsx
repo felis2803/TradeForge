@@ -50,7 +50,9 @@ export default function Bots({ apiBase }: BotsProps): JSX.Element {
       queryClient.setQueryData<BotsResponse | undefined>(['bots'], (prev) => {
         const current = prev ?? { bots: [] };
         const nextBots = current.bots.slice();
-        const index = nextBots.findIndex((bot) => bot.botName === message.payload.botName);
+        const index = nextBots.findIndex(
+          (bot) => bot.botName === message.payload.botName,
+        );
         const balanceInt = `${message.payload.balanceInt ?? ''}`;
         if (index >= 0) {
           nextBots[index] = {
@@ -91,14 +93,23 @@ export default function Bots({ apiBase }: BotsProps): JSX.Element {
           <tbody className="divide-y divide-slate-800">
             {bots.map((bot) => (
               <tr key={bot.botName} className="hover:bg-slate-900/40">
-                <td className="px-3 py-2 font-medium text-slate-200">{bot.botName}</td>
-                <td className="px-3 py-2 text-slate-300">{formatBalance(bot.initialBalanceInt)}</td>
-                <td className="px-3 py-2 text-slate-200">{formatBalance(bot.currentBalanceInt)}</td>
+                <td className="px-3 py-2 font-medium text-slate-200">
+                  {bot.botName}
+                </td>
+                <td className="px-3 py-2 text-slate-300">
+                  {formatBalance(bot.initialBalanceInt)}
+                </td>
+                <td className="px-3 py-2 text-slate-200">
+                  {formatBalance(bot.currentBalanceInt)}
+                </td>
               </tr>
             ))}
             {bots.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-3 py-6 text-center text-slate-500">
+                <td
+                  colSpan={3}
+                  className="px-3 py-6 text-center text-slate-500"
+                >
                   Нет подключенных ботов
                 </td>
               </tr>

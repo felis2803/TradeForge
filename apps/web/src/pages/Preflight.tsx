@@ -23,7 +23,10 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
   const [dataOperator, setDataOperator] = useState(operators[0]);
   const [maxActiveOrders, setMaxActiveOrders] = useState(50);
   const [heartbeatTimeoutSec, setHeartbeatTimeoutSec] = useState(6);
-  const [historyRange, setHistoryRange] = useState<{ from: string; to: string }>({ from: '', to: '' });
+  const [historyRange, setHistoryRange] = useState<{
+    from: string;
+    to: string;
+  }>({ from: '', to: '' });
   const [instruments, setInstruments] = useState<InstrumentRow[]>([
     { symbol: 'BTCUSDT', makerBp: 1.0, takerBp: 1.0 },
   ]);
@@ -34,7 +37,11 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
 
   const runId = useMemo(() => `run-${Date.now()}`, []);
 
-  const handleInstrumentChange = (index: number, key: keyof InstrumentRow, value: string) => {
+  const handleInstrumentChange = (
+    index: number,
+    key: keyof InstrumentRow,
+    value: string,
+  ) => {
     setInstruments((prev) => {
       const next = [...prev];
       const row = { ...next[index] };
@@ -123,7 +130,9 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-slate-300">Оператор данных</label>
+          <label className="text-sm font-medium text-slate-300">
+            Оператор данных
+          </label>
           <select
             value={dataOperator}
             onChange={(event) => setDataOperator(event.target.value)}
@@ -170,20 +179,31 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
       {mode === 'history' && (
         <div className="flex flex-wrap items-end gap-4 rounded-md border border-slate-800 bg-slate-900/40 p-4">
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-slate-300">Начало периода</label>
+            <label className="text-sm font-medium text-slate-300">
+              Начало периода
+            </label>
             <input
               type="date"
               value={historyRange.from}
-              onChange={(event) => setHistoryRange((prev) => ({ ...prev, from: event.target.value }))}
+              onChange={(event) =>
+                setHistoryRange((prev) => ({
+                  ...prev,
+                  from: event.target.value,
+                }))
+              }
               className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-slate-300">Окончание периода</label>
+            <label className="text-sm font-medium text-slate-300">
+              Окончание периода
+            </label>
             <input
               type="date"
               value={historyRange.to}
-              onChange={(event) => setHistoryRange((prev) => ({ ...prev, to: event.target.value }))}
+              onChange={(event) =>
+                setHistoryRange((prev) => ({ ...prev, to: event.target.value }))
+              }
               className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
             />
           </div>
@@ -195,7 +215,10 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
             Загрузить
           </button>
           <div className="text-sm text-slate-400">
-            Статус данных: <span className={dataReady ? 'text-emerald-300' : 'text-amber-300'}>{dataReady ? 'Готово' : 'Ожидание'}</span>
+            Статус данных:{' '}
+            <span className={dataReady ? 'text-emerald-300' : 'text-amber-300'}>
+              {dataReady ? 'Готово' : 'Ожидание'}
+            </span>
           </div>
         </div>
       )}
@@ -227,7 +250,13 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                   <td className="px-3 py-2">
                     <input
                       value={row.symbol}
-                      onChange={(event) => handleInstrumentChange(index, 'symbol', event.target.value)}
+                      onChange={(event) =>
+                        handleInstrumentChange(
+                          index,
+                          'symbol',
+                          event.target.value,
+                        )
+                      }
                       className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
                       placeholder="BTCUSDT"
                       aria-label="Тикер"
@@ -238,7 +267,13 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                       type="number"
                       step="0.01"
                       value={row.makerBp}
-                      onChange={(event) => handleInstrumentChange(index, 'makerBp', event.target.value)}
+                      onChange={(event) =>
+                        handleInstrumentChange(
+                          index,
+                          'makerBp',
+                          event.target.value,
+                        )
+                      }
                       className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
                       aria-label="Maker (bps)"
                     />
@@ -248,7 +283,13 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                       type="number"
                       step="0.01"
                       value={row.takerBp}
-                      onChange={(event) => handleInstrumentChange(index, 'takerBp', event.target.value)}
+                      onChange={(event) =>
+                        handleInstrumentChange(
+                          index,
+                          'takerBp',
+                          event.target.value,
+                        )
+                      }
                       className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
                       aria-label="Taker (bps)"
                     />
@@ -273,7 +314,9 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col text-sm">
-          <span className="font-medium text-slate-300">Лимит активных ордеров</span>
+          <span className="font-medium text-slate-300">
+            Лимит активных ордеров
+          </span>
           <input
             type="number"
             value={maxActiveOrders}
@@ -282,11 +325,15 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
           />
         </label>
         <label className="flex flex-col text-sm">
-          <span className="font-medium text-slate-300">Таймаут heartbeat (сек)</span>
+          <span className="font-medium text-slate-300">
+            Таймаут heartbeat (сек)
+          </span>
           <input
             type="number"
             value={heartbeatTimeoutSec}
-            onChange={(event) => setHeartbeatTimeoutSec(Number(event.target.value))}
+            onChange={(event) =>
+              setHeartbeatTimeoutSec(Number(event.target.value))
+            }
             className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
           />
         </label>
