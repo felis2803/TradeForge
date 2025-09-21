@@ -42,6 +42,11 @@
      VITE_API_BASE=http://localhost:3001
      ```
 
+     > **Fees and integer fields**:
+     >
+     > - Commissions are in **basis points** (integers): `makerBp: 1`, `takerBp: 5`.
+     > - Monetary/quantity fields ending with `Int` are **strings** in minimal units (JSON-safe).
+
      Use this when the backend is exposed on a non-default URL, container, or tunnel.
 
 ## Using the web UI
@@ -49,11 +54,12 @@
 1. Open `http://localhost:5173` in your browser.
 2. The landing page is split into three panels:
 
-   ![UI screenshot](./images/web-ui-overview.png)
+   <!-- TODO: add UI screenshot -->
 
    ### Preflight configuration
    - Choose **Биржа** (exchange) and **Оператор данных** (data operator) to describe the sandbox source.
    - Select the run **Режим** (`Realtime` or `History`). Historical mode unlocks a date range picker and playback speed control.
+     Speed is set during run configuration (`POST /v1/runs`) and applies only to history mode.
    - Manage instrument rows to define symbols and their maker/taker commission basis points. Add extra rows for multi-asset simulations.
    - Set operational limits such as **Максимум активных ордеров** and **Таймаут heartbeat (сек)**.
    - Toggle **Статус данных** when your historical dataset is ready to run.
@@ -71,7 +77,7 @@
          "instruments": [
            {
              "symbol": "BTCUSDT",
-             "fees": { "makerBp": 1.0, "takerBp": 1.0 }
+             "fees": { "makerBp": 1, "takerBp": 1 }
            }
          ],
          "maxActiveOrders": 100,
@@ -82,12 +88,7 @@
 
    ### Run control
    - The status strip mirrors `GET /v1/runs/status` and updates every five seconds.
-   - **Старт** triggers `POST /v1/runs/start`. In history mode you can include `{"speed": "2x"}` (valid options: `realtime`, `1x`, `2x`, `as_fast_as_possible`).
-     ```bash
-     curl -X POST http://localhost:3001/v1/runs/start \
-       -H "Content-Type: application/json" \
-       -d '{ "speed": "2x" }'
-     ```
+   - **Старт** triggers `POST /v1/runs/start` to resume execution with the previously configured parameters.
    - **Пауза** (`POST /v1/runs/pause`) and **Стоп** (`POST /v1/runs/stop`) gracefully snapshot the state so you can resume or replay later.
 
    ### Bots panel
@@ -96,84 +97,170 @@
 
 ## Connecting bots
 
-- Bots connect to `ws://localhost:3001/ws`. Use secure WebSocket (`wss://`) if you proxy through TLS.
-- Immediately after the socket opens, send a `hello` envelope. Integer quantities, prices, and balances should be encoded as strings to preserve precision.
+> **Identity & Auth (MVP)**: No tokens/auth. A bot identifies by `botName`. On disconnect, state persists; reconnect with the **same `botName`** resumes the session. Avoid name collisions if multiple people test simultaneously.
+>
+> **Envelope timestamp (`ts`)**: we include `ts` (epoch ms) in examples for tracing; the server may ignore it.
 
-  ```json
-  {
-    "type": "hello",
-    "payload": {
-      "botName": "alpha-maker",
-      "initialBalanceInt": "100000000"
-    }
+### Session lifecycle
+
+Bots connect to `ws://localhost:3001/ws`. Use secure WebSocket (`wss://`) if you proxy through TLS. Immediately after the socket opens, send a `hello` envelope. Integer quantities, prices, and balances should be encoded as strings to preserve precision.
+
+```json
+{
+  "type": "hello",
+  "ts": 1700000000000,
+  "payload": {
+    "botName": "alpha-maker",
+    "initialBalanceInt": "100000000"
   }
-  ```
+}
+```
 
-- The service replies with `hello` describing configured symbols, fees, and run limits:
+The service replies with `hello` describing configured symbols, fees, and run limits:
 
-  ```json
-  {
-    "type": "hello",
-    "payload": {
-      "symbols": ["BTCUSDT"],
-      "fees": {
-        "BTCUSDT": { "maker": 1, "taker": 1 }
-      },
-      "limits": { "maxActiveOrders": 100 }
-    }
+```json
+{
+  "type": "hello",
+  "ts": 1700000000000,
+  "payload": {
+    "symbols": ["BTCUSDT"],
+    "fees": {
+      "BTCUSDT": { "maker": 1, "taker": 1 }
+    },
+    "limits": { "maxActiveOrders": 100 }
   }
-  ```
+}
+```
 
-- Maintain liveness by sending heartbeats faster than the configured `heartbeatTimeoutSec`:
+Maintain liveness by sending heartbeats faster than the configured `heartbeatTimeoutSec`:
 
-  ```json
-  { "type": "heartbeat", "payload": {} }
-  ```
+```json
+{ "type": "heartbeat", "ts": 1700000000000, "payload": {} }
+```
 
-  The server responds with its own `heartbeat` and logs a warning if bot heartbeats lapse.
+The server responds with its own `heartbeat` and logs a warning if bot heartbeats lapse.
 
-- Place orders with `order.place`. Supported types: `MARKET`, `LIMIT`, `STOP_MARKET`, `STOP_LIMIT`. Optional flags include `postOnly` for maker-enforced behavior.
+### Orders
 
-  ```json
-  {
-    "type": "order.place",
-    "payload": {
-      "clientOrderId": "c_1700000000000",
-      "symbol": "BTCUSDT",
-      "side": "buy",
-      "type": "MARKET",
-      "qtyInt": "1000000",
-      "timeInForce": "GTC"
-    }
+> **STOP trigger source**: STOP orders (stop-market/stop-limit) trigger on the **last trade** price (not best bid/ask).
+
+Place orders with `order.place`. Supported types: `MARKET`, `LIMIT`, `STOP_MARKET`, `STOP_LIMIT`. Optional flags include `postOnly` for maker-enforced behavior.
+
+```json
+{
+  "type": "order.place",
+  "ts": 1700000000000,
+  "payload": {
+    "clientOrderId": "c_1700000000000",
+    "symbol": "BTCUSDT",
+    "side": "buy",
+    "type": "MARKET",
+    "qtyInt": "1000000",
+    "timeInForce": "GTC"
   }
-  ```
+}
+```
 
-  Successful submissions generate:
-  - `order.ack` with the assigned `serverOrderId` and acceptance status.
-  - `order.update` when the order transitions to `open`, `filled`, or `canceled`.
-  - `order.fill` plus a `trade` record for executed volume, including computed taker/maker fees.
+Successful submissions generate:
 
-- Cancel orders by referencing the server-side identifier:
+- `order.ack` with the assigned `serverOrderId` and acceptance status.
+- `order.update` when the order transitions to `open`, `filled`, or `canceled`.
+- `order.fill` plus a `trade` record for executed volume, including computed taker/maker fees.
 
-  ```json
-  {
-    "type": "order.cancel",
-    "payload": { "serverOrderId": "srv_123" }
+### Rejections (structured codes)
+
+```json
+{
+  "type": "order.reject",
+  "ts": 1700000000000,
+  "payload": {
+    "code": "VALIDATION",
+    "message": "bad order payload",
+    "clientOrderId": "c_170..."
   }
-  ```
+}
+```
 
-  A successful cancel returns `order.cancel` with the same `serverOrderId`; failures emit `order.reject` codes such as `NOT_FOUND`, `RATE_LIMIT`, or `VALIDATION`.
+```json
+{
+  "type": "order.reject",
+  "ts": 1700000000000,
+  "payload": { "code": "RATE_LIMIT", "message": "too many active orders" }
+}
+```
 
-- Balance deltas arrive as `balance.update` messages. The backend preserves bot state, so reconnecting with the same `botName` restores balances and active orders.
+### Order cancel
+
+Cancel orders by referencing the server-side identifier:
+
+```json
+{
+  "type": "order.cancel",
+  "ts": 1700000000000,
+  "payload": { "serverOrderId": "srv_123" }
+}
+```
+
+A successful cancel returns `order.cancel` with the same `serverOrderId`; failures emit `order.reject` codes such as `NOT_FOUND`, `RATE_LIMIT`, or `VALIDATION`.
+
+### Balance updates
+
+Balance deltas arrive as `balance.update` messages. The backend preserves bot state, so reconnecting with the same `botName` restores balances and active orders.
+
+### Depth streaming (L2)
+
+- On subscribe/connect the server emits a full L2 **snapshot** for each configured symbol:
+
+```json
+{
+  "type": "depth.snapshot",
+  "ts": 1700000000000,
+  "payload": {
+    "symbol": "BTCUSDT",
+    "bids": [["100000", "2"]],
+    "asks": [["100100", "1"]]
+  }
+}
+```
+
+- Then it streams **diff updates** without aggregation:
+
+```json
+{
+  "type": "depth.diff",
+  "ts": 1700000000000,
+  "payload": {
+    "symbol": "BTCUSDT",
+    "bids": [["100000", "0"]],
+    "asks": [["100200", "3"]]
+  }
+}
+```
+
+`qtyInt == "0"` means remove the price level.
+
+### WebSocket message summary
+
+| Direction    | Message types                                                             | Purpose                                                    |
+| ------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| bot → server | `hello`, `heartbeat`, `order.place`, `order.cancel`                       | Identify the bot, maintain the session, and manage orders. |
+| server → bot | `hello`, `heartbeat`                                                      | Confirm run configuration and acknowledge liveness.        |
+| server → bot | `order.ack`, `order.update`, `order.fill`, `order.cancel`, `order.reject` | Reflect order lifecycle events and errors.                 |
+| server → bot | `balance.update`, `depth.snapshot`, `depth.diff`                          | Stream state changes for balances and L2 order books.      |
 
 ## Persistence and results
 
-- Each configured run writes artifacts to `runs/<runId>/` (or the directory specified by `RUNS_DIR`).
-- Files include:
-  - `run.json` – configuration snapshot and lifecycle timestamps.
-  - `metadata.json` – exchange metadata and heartbeat settings.
-  - `orders.json` / `trades.json` – chronological order and fill history.
-  - `balances.json` – bot balances as of the last persistence cycle.
+### Persistence
+
+- Artifacts are stored under `runs/{runId}/` (configurable via `RUNS_DIR`).
+- Writes are **atomic** (temp file then rename) to avoid truncated files on crashes.
+
+### Artifact inventory
+
+- `run.json` – configuration snapshot and lifecycle timestamps.
+- `metadata.json` – exchange metadata and heartbeat settings.
+- `orders.json` / `trades.json` – chronological order and fill history.
+- `balances.json` – bot balances as of the last persistence cycle.
 - Re-run historical simulations by reusing the saved configuration with `POST /v1/runs` and pointing bots at the stored dataset.
 
 ## Examples
