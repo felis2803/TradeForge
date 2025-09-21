@@ -1,0 +1,420 @@
+{
+  "project": "TradeForge Web MVP",
+  "version": "0.1.0",
+  "goals": [
+    "Веб-интерфейс для конфигурации песочницы и запуска прогона",
+    "Подключение внешних ботов по WebSocket (двунаправленный канал)",
+    "Онлайн-отображение статуса и текущих балансов ботов",
+    "Сохранение результатов прогона в локальные JSON-файлы"
+  ],
+  "nonGoals": [
+    "Многопользовательский доступ/роли",
+    "Параллельные прогоны",
+    "Таблицы сделок/глубокая аналитика",
+    "Автоподгрузка истории для бота при подключении",
+    "Перемотка к произвольному моменту (seek)"
+  ],
+  "stack": {
+    "frontend": {
+      "framework": "React",
+      "bundler": "Vite",
+      "language": "TypeScript",
+      "styling": "TailwindCSS",
+      "ui_library": "shadcn/ui (Radix UI)",
+      "state_data": "React Query",
+      "e2e": "Playwright"
+    },
+    "backend": {
+      "runtime": "Node.js",
+      "http_server": "Fastify",
+      "websocket": "fastify-websocket",
+      "language": "TypeScript"
+    }
+  },
+  "runModel": {
+    "singleRunOnly": true,
+    "determinism": {
+      "fixedPoint": true,
+      "seed": { "supported": true, "source": "UI config" }
+    },
+    "speedControl": {
+      "modes": ["realtime", "1x", "2x", "as_fast_as_possible"],
+      "ui": true,
+      "appliesTo": "historical_runs_only"
+    },
+    "seekPolicy": {
+      "arbitrarySeekAllowed": false
+    }
+  },
+  "botConnectivity": {
+    "transport": "WebSocket",
+    "direction": "duplex",
+    "identification": {
+      "auth": "none",
+      "identity": "botName (string) provided by bot on connect",
+      "reconnect": "allowed by same botName; resumes current stream moment"
+    },
+    "lifecycle": {
+      "heartbeat": true,
+      "heartbeatTimeoutSec": {
+        "configurable": true,
+        "default": 6
+      },
+      "onDisconnect": "run continues; existing orders persist; bot may reconnect by name"
+    }
+  },
+  "marketData": {
+    "streams": ["trades", "depthL2"],
+    "depthInitial": "send full L2 snapshot on WS subscribe/connect",
+    "depthUpdates": "diff only, no aggregation",
+    "historyOnConnect": "none"
+  },
+  "orders": {
+    "types": ["MARKET", "LIMIT", "STOP_MARKET", "STOP_LIMIT"],
+    "timeInForce": ["GTC"],
+    "flags": ["postOnly"],
+    "stopTrigger": "last_trade_price",
+    "limits": {
+      "maxActiveOrdersPerRun": {
+        "configurable": true,
+        "source": "UI config"
+      }
+    },
+    "fees": {
+      "perInstrument": true,
+      "makerTakerSplit": true,
+      "defaults": "real exchange values (pre-filled in UI, editable)"
+    }
+  },
+  "persistence": {
+    "format": "local JSON files",
+    "layout": {
+      "runDir": "runs/{runId}/",
+      "files": [
+        "run.json",
+        "balances.json",
+        "orders.json",
+        "trades.json",
+        "metadata.json"
+      ]
+    },
+    "contents": {
+      "run.json": "high-level config + final status + timestamps",
+      "balances.json": "current balance per bot (snapshot on changes and on stop)",
+      "orders.json": "placed/canceled/filled with timestamps and details",
+      "trades.json": "execution side-effects attributed to bots",
+      "metadata.json": "system info: versions, scales, symbols, fees"
+    }
+  },
+  "ui": {
+    "pages": [
+      {
+        "id": "preflight",
+        "title": "Панель преднастройки",
+        "sections": [
+          {
+            "id": "dataSource",
+            "fields": [
+              { "key": "exchange", "type": "select", "required": true },
+              {
+                "key": "dataOperator",
+                "type": "select",
+                "required": false,
+                "hint": "исторические/реальные поставщики"
+              },
+              { "key": "instruments", "type": "multiselect", "required": true },
+              {
+                "key": "mode",
+                "type": "radio",
+                "options": ["history", "realtime"],
+                "required": true
+              },
+              {
+                "key": "historyPeriod",
+                "type": "daterange",
+                "requiredIf": "mode==history"
+              },
+              {
+                "key": "loadButton",
+                "type": "button",
+                "label": "Загрузить",
+                "visibleIf": "mode==history"
+              },
+              {
+                "key": "dataReadyIndicator",
+                "type": "status",
+                "states": ["idle", "loading", "ready", "error"]
+              }
+            ]
+          },
+          {
+            "id": "feesAndLimits",
+            "fields": [
+              {
+                "key": "fees",
+                "type": "table",
+                "perInstrument": true,
+                "columns": [
+                  { "key": "instrument", "type": "label" },
+                  {
+                    "key": "makerFee",
+                    "type": "numberPercent",
+                    "default": "exchangeDefault"
+                  },
+                  {
+                    "key": "takerFee",
+                    "type": "numberPercent",
+                    "default": "exchangeDefault"
+                  }
+                ]
+              },
+              {
+                "key": "maxActiveOrders",
+                "type": "number",
+                "min": 1,
+                "default": 50
+              },
+              {
+                "key": "heartbeatTimeoutSec",
+                "type": "number",
+                "min": 2,
+                "default": 6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "bots",
+        "title": "Панель ботов",
+        "table": {
+          "columns": [
+            { "key": "botName", "title": "Имя бота" },
+            { "key": "initialBalance", "title": "Начальный баланс" },
+            {
+              "key": "currentBalance",
+              "title": "Текущий баланс (с учётом позиций)"
+            }
+          ],
+          "source": "WS events + backend cache"
+        }
+      },
+      {
+        "id": "runControl",
+        "title": "Панель управления прогоном",
+        "controls": [
+          { "key": "start", "type": "button" },
+          { "key": "pause", "type": "button" },
+          { "key": "stop", "type": "button" },
+          {
+            "key": "speed",
+            "type": "select",
+            "options": ["realtime", "1x", "2x", "as_fast_as_possible"],
+            "visibleIf": "mode==history"
+          }
+        ],
+        "indicators": [
+          {
+            "key": "runStatus",
+            "states": ["idle", "running", "paused", "stopped", "error"]
+          },
+          {
+            "key": "progress",
+            "type": "timeline",
+            "visibleIf": "mode==history"
+          }
+        ]
+      }
+    ],
+    "mvpMetrics": {
+      "showCurrentBalanceOnly": true,
+      "equityCurve": false
+    }
+  },
+  "api": {
+    "http": {
+      "base": "/v1",
+      "routes": [
+        { "method": "GET", "path": "/health" },
+        {
+          "method": "POST",
+          "path": "/runs",
+          "desc": "create+configure run (or reuse existing single run)"
+        },
+        { "method": "POST", "path": "/runs/start" },
+        { "method": "POST", "path": "/runs/pause" },
+        { "method": "POST", "path": "/runs/stop" },
+        { "method": "GET", "path": "/runs/status" },
+        {
+          "method": "POST",
+          "path": "/data/load",
+          "desc": "history load if mode==history"
+        },
+        {
+          "method": "GET",
+          "path": "/bots",
+          "desc": "current bots snapshot and balances"
+        }
+      ]
+    },
+    "websocket": {
+      "path": "/ws",
+      "messageEnvelope": {
+        "fields": ["type", "ts", "payload", "reqId?"],
+        "ts": "number | string (ms epoch or ISO)",
+        "note": "all prices/qty as integers in minimal units; include priceScale/qtyScale in metadata"
+      },
+      "serverToBot": [
+        {
+          "type": "hello",
+          "payload": {
+            "scales": { "priceScale": "int", "qtyScale": "int" },
+            "symbols": ["string"],
+            "fees": {
+              "instrument": { "maker": "bp or pct", "taker": "bp or pct" }
+            },
+            "limits": { "maxActiveOrders": "int" }
+          }
+        },
+        {
+          "type": "depth.snapshot",
+          "payload": {
+            "symbol": "string",
+            "bids": [["priceInt", "qtyInt"]],
+            "asks": [["priceInt", "qtyInt"]]
+          }
+        },
+        {
+          "type": "depth.diff",
+          "payload": {
+            "symbol": "string",
+            "bids": [["priceInt", "qtyInt"]],
+            "asks": [["priceInt", "qtyInt"]],
+            "note": "qtyInt==0 => remove level"
+          }
+        },
+        {
+          "type": "trade",
+          "payload": {
+            "symbol": "string",
+            "priceInt": "int",
+            "qtyInt": "int",
+            "side": "buy|sell"
+          }
+        },
+        {
+          "type": "order.ack",
+          "payload": {
+            "clientOrderId": "string",
+            "serverOrderId": "string",
+            "status": "accepted",
+            "normalized": {
+              "priceInt?": "int",
+              "qtyInt": "int",
+              "flags": ["postOnly?"]
+            }
+          }
+        },
+        {
+          "type": "order.update",
+          "payload": {
+            "serverOrderId": "string",
+            "status": "open|partiallyFilled|filled|canceled|rejected"
+          }
+        },
+        {
+          "type": "order.fill",
+          "payload": {
+            "serverOrderId": "string",
+            "priceInt": "int",
+            "qtyInt": "int",
+            "liquidity": "maker|taker",
+            "feeInt": "int"
+          }
+        },
+        {
+          "type": "order.cancel",
+          "payload": { "serverOrderId": "string", "status": "canceled" }
+        },
+        {
+          "type": "order.reject",
+          "payload": {
+            "clientOrderId?": "string",
+            "serverOrderId?": "string",
+            "reason": "string"
+          }
+        },
+        {
+          "type": "balance.update",
+          "payload": { "botName": "string", "balanceInt": "int" }
+        },
+        {
+          "type": "heartbeat",
+          "payload": { "ts": "number" }
+        }
+      ],
+      "botToServer": [
+        {
+          "type": "hello",
+          "payload": { "botName": "string", "initialBalanceInt": "int" }
+        },
+        {
+          "type": "order.place",
+          "payload": {
+            "clientOrderId": "string",
+            "symbol": "string",
+            "side": "buy|sell",
+            "type": "MARKET|LIMIT|STOP_MARKET|STOP_LIMIT",
+            "qtyInt": "int",
+            "priceInt?": "int",
+            "stopPriceInt?": "int",
+            "limitPriceInt?": "int",
+            "timeInForce": "GTC",
+            "flags": ["postOnly?"]
+          }
+        },
+        {
+          "type": "order.cancel",
+          "payload": { "serverOrderId": "string" }
+        },
+        {
+          "type": "heartbeat",
+          "payload": { "ts": "number" }
+        }
+      ],
+      "errors": [
+        {
+          "code": "RATE_LIMIT",
+          "message": "too many active orders",
+          "http": 429
+        },
+        { "code": "VALIDATION", "message": "bad payload" },
+        { "code": "NOT_FOUND", "message": "order not found" }
+      ]
+    }
+  },
+  "validationAndScales": {
+    "integersOnly": true,
+    "priceScale": "int per symbol",
+    "qtyScale": "int per symbol",
+    "serialization": "JSON with bigint-safe integers (string if needed)"
+  },
+  "runStates": ["idle", "running", "paused", "stopped", "error"],
+  "defaults": {
+    "speed": "1x",
+    "heartbeatTimeoutSec": 6,
+    "maxActiveOrders": 50
+  },
+  "e2e": {
+    "tools": "Playwright",
+    "scenarios": [
+      "can_open_preflight_and_select_exchange_operator_instruments",
+      "can_load_history_and_see_ready_indicator",
+      "can_start_pause_stop_run_and_see_status_changes",
+      "can_connect_bot_via_ws_and_see_it_in_bots_table",
+      "bot_places_limit_order_postOnly_and_receives_ack_fill",
+      "disconnect_and_reconnect_bot_by_name_orders_persist",
+      "exceed_max_active_orders_returns_RATE_LIMIT_error"
+    ]
+  }
+}
