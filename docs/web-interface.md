@@ -17,6 +17,8 @@
 
 ## Launching the services
 
+> **Run start note**: Speed is configured during preflight via `POST /v1/runs` and applies only to history mode. The `POST /v1/runs/start` endpoint starts the run using the previously configured parameters and does not accept a `speed` body.
+
 1. **Start the backend (Fastify service).**
 
    ```bash
@@ -132,6 +134,10 @@ The service replies with `hello` describing configured symbols, fees, and run li
 }
 ```
 
+### Heartbeat
+
+> **Timestamp note**: Examples may include `ts` (epoch ms). Both with and without `ts` are accepted; `ts` is recommended for tracing.
+
 Maintain liveness by sending heartbeats faster than the configured `heartbeatTimeoutSec`:
 
 ```json
@@ -142,30 +148,44 @@ The server responds with its own `heartbeat` and logs a warning if bot heartbeat
 
 ### Orders
 
-> **STOP trigger source**: STOP orders (stop-market/stop-limit) trigger on the **last trade** price (not best bid/ask).
-
-Place orders with `order.place`. Supported types: `MARKET`, `LIMIT`, `STOP_MARKET`, `STOP_LIMIT`. Optional flags include `postOnly` for maker-enforced behavior.
+Place orders via WebSocket:
 
 ```json
 {
   "type": "order.place",
   "ts": 1700000000000,
   "payload": {
-    "clientOrderId": "c_1700000000000",
+    "clientOrderId": "c_170...",
     "symbol": "BTCUSDT",
     "side": "buy",
-    "type": "MARKET",
-    "qtyInt": "1000000",
-    "timeInForce": "GTC"
+    "type": "MARKET|LIMIT|STOP_MARKET|STOP_LIMIT",
+    "qtyInt": "1",
+    "priceInt": "100",
+    "stopPriceInt": "100",
+    "limitPriceInt": "101",
+    "timeInForce": "GTC",
+    "flags": ["postOnly"]
   }
 }
 ```
+
+> **STOP trigger source**: STOP orders (stop-market/stop-limit) trigger on the **last trade** price (not best bid/ask).
 
 Successful submissions generate:
 
 - `order.ack` with the assigned `serverOrderId` and acceptance status.
 - `order.update` when the order transitions to `open`, `filled`, or `canceled`.
 - `order.fill` plus a `trade` record for executed volume, including computed taker/maker fees.
+
+### Order cancel
+
+```json
+{
+  "type": "order.cancel",
+  "ts": 1700000000000,
+  "payload": { "serverOrderId": "o_123" }
+}
+```
 
 ### Rejections (structured codes)
 
@@ -186,18 +206,6 @@ Successful submissions generate:
   "type": "order.reject",
   "ts": 1700000000000,
   "payload": { "code": "RATE_LIMIT", "message": "too many active orders" }
-}
-```
-
-### Order cancel
-
-Cancel orders by referencing the server-side identifier:
-
-```json
-{
-  "type": "order.cancel",
-  "ts": 1700000000000,
-  "payload": { "serverOrderId": "srv_123" }
 }
 ```
 
