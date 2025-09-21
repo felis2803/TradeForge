@@ -23,7 +23,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `pnpm --dir apps/svc start`,
+      command: `pnpm --dir apps/svc dev`,
       port: PORT_BACKEND,
       reuseExistingServer: !process.env.CI,
       stdout: 'pipe',
