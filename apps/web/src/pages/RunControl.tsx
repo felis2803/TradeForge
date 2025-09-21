@@ -35,6 +35,9 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
   const [selectedSpeed, setSelectedSpeed] = useState<string>('1x');
 
   const status = data?.status ?? 'idle';
+  const isRunning = status === 'running';
+  const isIdle = status === 'idle';
+  const isStopped = status === 'stopped';
   const mode = data?.config?.mode ?? 'realtime';
 
   const execute = async (endpoint: string, body?: Record<string, unknown>) => {
@@ -87,7 +90,7 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
         <button
           type="button"
           onClick={handleStart}
-          disabled={pending}
+          disabled={pending || isRunning}
           className="rounded-md border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Старт
@@ -95,7 +98,7 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
         <button
           type="button"
           onClick={handlePause}
-          disabled={pending}
+          disabled={pending || !isRunning}
           className="rounded-md border border-amber-500 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Пауза
@@ -103,7 +106,7 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
         <button
           type="button"
           onClick={handleStop}
-          disabled={pending}
+          disabled={pending || isIdle || isStopped}
           className="rounded-md border border-red-500 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Стоп

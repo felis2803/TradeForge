@@ -37,10 +37,21 @@ export interface RunStateSnapshot {
   stoppedAt: number | null;
 }
 
+export type IntString = string;
+
+export type ErrorCode = 'RATE_LIMIT' | 'VALIDATION' | 'NOT_FOUND' | 'INTERNAL';
+
+export type RejectPayload = {
+  code: ErrorCode;
+  message: string;
+  clientOrderId?: string;
+  serverOrderId?: string;
+};
+
 export interface BotState {
   botName: string;
-  initialBalanceInt: number;
-  currentBalanceInt: number;
+  initialBalanceInt: IntString;
+  currentBalanceInt: IntString;
   connected: boolean;
   lastSeenTs: number;
 }
@@ -65,10 +76,10 @@ export interface OrderRecord {
   symbol: string;
   side: OrderSide;
   type: OrderType;
-  qtyInt: number;
-  priceInt?: number;
-  stopPriceInt?: number;
-  limitPriceInt?: number;
+  qtyInt: IntString;
+  priceInt?: IntString;
+  stopPriceInt?: IntString;
+  limitPriceInt?: IntString;
   status: InternalOrderStatus;
   timeInForce: OrderTimeInForce;
   flags: OrderFlag[];
@@ -81,11 +92,11 @@ export interface TradeRecord {
   serverOrderId: string;
   botName: string;
   symbol: string;
-  priceInt: number;
-  qtyInt: number;
+  priceInt: IntString;
+  qtyInt: IntString;
   side: OrderSide;
   liquidity: 'maker' | 'taker';
-  feeInt: number;
+  feeInt: IntString;
   ts: number;
 }
 

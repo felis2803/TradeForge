@@ -33,7 +33,7 @@ test('operator can configure run and see bot updates', async ({ page }) => {
       ws.send(
         createEnvelope('hello', {
           botName: 'e2e-bot',
-          initialBalanceInt: initialBalance,
+          initialBalanceInt: initialBalance.toString(),
         }),
       );
     });
@@ -47,7 +47,7 @@ test('operator can configure run and see bot updates', async ({ page }) => {
             symbol: 'BTCUSDT',
             side: 'buy',
             type: 'MARKET',
-            qtyInt: 1,
+            qtyInt: '1',
             timeInForce: 'GTC',
             flags: [],
           }),
@@ -71,10 +71,16 @@ test('operator can configure run and see bot updates', async ({ page }) => {
 
   const row = page.locator('tbody tr').filter({ hasText: 'e2e-bot' });
   await expect(row).toBeVisible();
-  await expect(row.locator('td').nth(1)).toHaveText(
-    initialBalance.toLocaleString('ru-RU'),
-  );
-  await expect(row.locator('td').nth(2)).toHaveText(
-    expectedBalance.toLocaleString('ru-RU'),
-  );
+  await expect
+    .poll(async () => {
+      const text = await row.locator('td').nth(1).innerText();
+      return text.replace(/[^0-9-]/g, '');
+    })
+    .toBe(initialBalance.toString());
+  await expect
+    .poll(async () => {
+      const text = await row.locator('td').nth(2).innerText();
+      return text.replace(/[^0-9-]/g, '');
+    })
+    .toBe(expectedBalance.toString());
 });

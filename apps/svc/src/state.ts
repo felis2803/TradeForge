@@ -1,5 +1,6 @@
 import {
   BotState,
+  IntString,
   InternalOrderStatus,
   OrderFlag,
   OrderRecord,
@@ -24,10 +25,32 @@ interface StateData {
   orders: Map<string, OrderRecord>;
   trades: TradeRecord[];
   orderSeq: number;
-  lastPrices: Map<string, number>;
+  lastPrices: Map<string, bigint>;
 }
 
-const DEFAULT_PRICE_INT = 100_000;
+const DEFAULT_PRICE_INT = 100_000n;
+
+function toIntStringStrict(value: IntString | number | bigint): IntString {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value).toString();
+  }
+  throw new Error('Invalid integer value');
+}
+
+function toIntStringOptional(
+  value?: IntString | number | bigint,
+): IntString | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return toIntStringStrict(value);
+}
 
 const initialState: StateData = {
   config: null,
@@ -147,7 +170,7 @@ export function touchBot(botName: string): void {
 
 export function upsertBot(
   botName: string,
-  initialBalanceInt: number,
+  initialBalanceInt: IntString,
 ): BotState {
   const now = Date.now();
   const existing = state.bots.get(botName);
@@ -155,7 +178,7 @@ export function upsertBot(
     existing.lastSeenTs = now;
     existing.connected = true;
     if (initialBalanceInt !== existing.initialBalanceInt) {
-      existing.initialBalanceInt = initialBalanceInt;
+      existing.initialBalanceInt = toIntStringStrict(initialBalanceInt);
     }
     state.bots.set(botName, existing);
     return existing;
@@ -163,8 +186,8 @@ export function upsertBot(
 
   const bot: BotState = {
     botName,
-    initialBalanceInt,
-    currentBalanceInt: initialBalanceInt,
+    initialBalanceInt: toIntStringStrict(initialBalanceInt),
+    currentBalanceInt: toIntStringStrict(initialBalanceInt),
     connected: true,
     lastSeenTs: now,
   };
@@ -196,13 +219,13 @@ export function getBot(botName: string): BotState | undefined {
 
 export function updateBotBalance(
   botName: string,
-  balanceInt: number,
+  balanceInt: IntString,
 ): BotState | undefined {
   const bot = state.bots.get(botName);
   if (!bot) {
     return undefined;
   }
-  bot.currentBalanceInt = balanceInt;
+  bot.currentBalanceInt = toIntStringStrict(balanceInt);
   bot.lastSeenTs = Date.now();
   state.bots.set(botName, bot);
   return { ...bot };
@@ -246,14 +269,18 @@ export function listOrders(): OrderRecord[] {
 
 export function addTrade(record: TradeRecord): void {
   state.trades.push(record);
-  state.lastPrices.set(record.symbol, record.priceInt);
+  try {
+    state.lastPrices.set(record.symbol, BigInt(record.priceInt));
+  } catch {
+    // ignore conversion errors; retain previous price
+  }
 }
 
 export function listTrades(): TradeRecord[] {
   return state.trades.map((trade) => ({ ...trade }));
 }
 
-export function getLastPrice(symbol: string): number {
+export function getLastPrice(symbol: string): bigint {
   return state.lastPrices.get(symbol) ?? DEFAULT_PRICE_INT;
 }
 
@@ -275,10 +302,10 @@ export function buildOrderRecord(params: {
   symbol: string;
   side: OrderRecord['side'];
   type: OrderType;
-  qtyInt: number;
-  priceInt?: number;
-  stopPriceInt?: number;
-  limitPriceInt?: number;
+  qtyInt: IntString;
+  priceInt?: IntString;
+  stopPriceInt?: IntString;
+  limitPriceInt?: IntString;
   timeInForce: OrderTimeInForce;
   flags: OrderFlag[];
   status: InternalOrderStatus;
@@ -291,10 +318,10 @@ export function buildOrderRecord(params: {
     symbol: params.symbol,
     side: params.side,
     type: params.type,
-    qtyInt: params.qtyInt,
-    priceInt: params.priceInt,
-    stopPriceInt: params.stopPriceInt,
-    limitPriceInt: params.limitPriceInt,
+    qtyInt: toIntStringStrict(params.qtyInt),
+    priceInt: toIntStringOptional(params.priceInt),
+    stopPriceInt: toIntStringOptional(params.stopPriceInt),
+    limitPriceInt: toIntStringOptional(params.limitPriceInt),
     timeInForce: params.timeInForce,
     flags: params.flags,
     status: params.status,

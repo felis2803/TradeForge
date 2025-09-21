@@ -6,8 +6,8 @@ import { useWs } from '../App.tsx';
 interface BotsResponse {
   bots: Array<{
     botName: string;
-    initialBalanceInt: number;
-    currentBalanceInt: number;
+    initialBalanceInt: string;
+    currentBalanceInt: string;
     connected?: boolean;
   }>;
 }
@@ -16,7 +16,19 @@ interface BotsProps {
   apiBase: string;
 }
 
-const formatter = new Intl.NumberFormat('ru-RU');
+function formatBalance(value: string): string {
+  const trimmed = value?.toString().trim() ?? '';
+  if (!trimmed) {
+    return '0';
+  }
+  const negative = trimmed.startsWith('-');
+  const digits = negative ? trimmed.slice(1) : trimmed;
+  if (!/^\d+$/.test(digits)) {
+    return trimmed;
+  }
+  const formatted = digits.replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+  return negative ? `-${formatted}` : formatted;
+}
 
 export default function Bots({ apiBase }: BotsProps): JSX.Element {
   const ws = useWs();
@@ -39,16 +51,17 @@ export default function Bots({ apiBase }: BotsProps): JSX.Element {
         const current = prev ?? { bots: [] };
         const nextBots = current.bots.slice();
         const index = nextBots.findIndex((bot) => bot.botName === message.payload.botName);
+        const balanceInt = `${message.payload.balanceInt ?? ''}`;
         if (index >= 0) {
           nextBots[index] = {
             ...nextBots[index],
-            currentBalanceInt: Number(message.payload.balanceInt),
+            currentBalanceInt: balanceInt,
           };
         } else {
           nextBots.push({
             botName: message.payload.botName,
-            initialBalanceInt: Number(message.payload.balanceInt),
-            currentBalanceInt: Number(message.payload.balanceInt),
+            initialBalanceInt: balanceInt,
+            currentBalanceInt: balanceInt,
           });
         }
         return { bots: nextBots };
@@ -79,8 +92,8 @@ export default function Bots({ apiBase }: BotsProps): JSX.Element {
             {bots.map((bot) => (
               <tr key={bot.botName} className="hover:bg-slate-900/40">
                 <td className="px-3 py-2 font-medium text-slate-200">{bot.botName}</td>
-                <td className="px-3 py-2 text-slate-300">{formatter.format(bot.initialBalanceInt)}</td>
-                <td className="px-3 py-2 text-slate-200">{formatter.format(bot.currentBalanceInt)}</td>
+                <td className="px-3 py-2 text-slate-300">{formatBalance(bot.initialBalanceInt)}</td>
+                <td className="px-3 py-2 text-slate-200">{formatBalance(bot.currentBalanceInt)}</td>
               </tr>
             ))}
             {bots.length === 0 && (

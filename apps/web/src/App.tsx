@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-import { API_BASE, WS_URL } from './config.ts';
 import { WsClient } from './lib/ws.ts';
 import Bots from './pages/Bots.tsx';
 import Preflight from './pages/Preflight.tsx';
@@ -21,6 +20,13 @@ const wsStatusLabel: Record<string, string> = {
   open: 'Онлайн',
   closed: 'Отключено',
 };
+
+const API_BASE =
+  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:3001';
+const DEFAULT_WS_BASE = API_BASE.replace(/^http/i, 'ws');
+const WS_URL =
+  (import.meta.env.VITE_WS_URL as string | undefined) ??
+  `${DEFAULT_WS_BASE}/ws?role=ui`;
 
 function App(): JSX.Element {
   const wsClient = useMemo(() => new WsClient(WS_URL), []);

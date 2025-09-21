@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type { IncomingMessage } from 'node:http';
-import type { SocketStream } from '@fastify/websocket';
-import type { RawData, WebSocket } from 'ws';
+import type WebSocket from 'ws';
+import type { RawData } from 'ws';
+import { z } from 'zod';
 
 import {
   addOrder,
@@ -19,69 +20,128 @@ import {
   updateOrderStatus,
   upsertBot,
 } from './state.js';
-import { OrderFlag, OrderRecord, RunConfig, WsEnvelope } from './types.js';
 import { persistFullState } from './persistence.js';
+import type { RejectPayload, RunConfig, WsEnvelope } from './types.js';
+
+type ParsedEnvelope = z.infer<typeof EnvelopeSchema>;
+type FastifyWsConnection = { socket: WebSocket };
+
+function isFastifyConnection(value: unknown): value is FastifyWsConnection {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  return 'socket' in value && Boolean((value as FastifyWsConnection).socket);
+}
+
+function resolveSocket(raw: FastifyWsConnection | WebSocket): WebSocket {
+  return isFastifyConnection(raw) ? raw.socket : (raw as WebSocket);
+}
 
 interface BotConnection {
   botName: string;
   socket: WebSocket;
-  heartbeatTimer?: NodeJS.Timeout;
+  lastHeartbeat: number;
   serverHeartbeat?: NodeJS.Timeout;
 }
 
 const botConnections = new Map<string, BotConnection>();
 const uiClients = new Set<WebSocket>();
+let heartbeatSweep: NodeJS.Timeout | null = null;
 
-interface NormalizedOrderPlacePayload {
-  clientOrderId: string;
-  symbol: string;
-  side: OrderRecord['side'];
-  type: OrderRecord['type'];
-  qtyInt: number;
-  priceInt?: number;
-  stopPriceInt?: number;
-  limitPriceInt?: number;
-  timeInForce: OrderRecord['timeInForce'];
-  flags: OrderFlag[];
-}
+const EnvelopeSchema = z.object({
+  type: z.string(),
+  ts: z.number().optional(),
+  payload: z.unknown(),
+  reqId: z.string().optional(),
+});
 
-interface OrderCancelPayload {
-  serverOrderId: string;
-}
+const IntStringSchema = z
+  .union([
+    z
+      .string()
+      .trim()
+      .regex(/^-?\d+$/),
+    z.number().int().refine(Number.isSafeInteger, 'unsafe integer'),
+    z.bigint(),
+  ])
+  .transform((value) => {
+    if (typeof value === 'string') {
+      return value.trim();
+    }
+    if (typeof value === 'number') {
+      return Math.trunc(value).toString();
+    }
+    return value.toString();
+  });
 
-interface HelloPayload {
-  botName: string;
-  initialBalanceInt: number;
-}
+const HelloSchema = z.object({
+  botName: z.string().min(1),
+  initialBalanceInt: IntStringSchema,
+});
+
+const HeartbeatSchema = z.object({
+  ts: z.number().optional(),
+});
+
+const PlaceSchema = z.object({
+  clientOrderId: z.string().min(1),
+  symbol: z.string().min(1),
+  side: z.enum(['buy', 'sell']),
+  type: z.enum(['MARKET', 'LIMIT', 'STOP_MARKET', 'STOP_LIMIT']),
+  qtyInt: IntStringSchema,
+  priceInt: IntStringSchema.optional(),
+  stopPriceInt: IntStringSchema.optional(),
+  limitPriceInt: IntStringSchema.optional(),
+  timeInForce: z.literal('GTC').optional().default('GTC'),
+  flags: z.array(z.literal('postOnly')).optional().default([]),
+});
+
+const CancelSchema = z.object({
+  serverOrderId: z.string().min(1),
+});
 
 function parseQuery(req: IncomingMessage): { role?: string } {
-  const url = new URL(req.url ?? '', 'http://localhost');
-  const role = url.searchParams.get('role') ?? undefined;
-  return { role };
+  try {
+    const url = new URL(req.url ?? '', 'http://localhost');
+    const role = url.searchParams.get('role') ?? undefined;
+    return { role };
+  } catch {
+    return {};
+  }
 }
 
-function send(socket: WebSocket, message: WsEnvelope): void {
+function send(
+  socket: WebSocket,
+  type: string,
+  payload: unknown,
+  reqId?: string,
+): void {
   if (socket.readyState !== socket.OPEN) {
     return;
   }
-  socket.send(JSON.stringify({ ...message, ts: Date.now() }));
+  const message: WsEnvelope = {
+    type,
+    ts: Date.now(),
+    payload,
+    ...(reqId ? { reqId } : {}),
+  };
+  socket.send(JSON.stringify(message));
 }
 
-function broadcastToUi(message: WsEnvelope): void {
+function broadcastToUi(type: string, payload: unknown): void {
+  const envelope = JSON.stringify({ type, ts: Date.now(), payload });
   for (const socket of uiClients) {
     if (socket.readyState !== socket.OPEN) continue;
-    socket.send(JSON.stringify({ ...message, ts: Date.now() }));
+    socket.send(envelope);
   }
 }
 
-function scheduleHeartbeatTimeout(connection: BotConnection): void {
-  clearTimeout(connection.heartbeatTimer);
-  const timeoutMs = getHeartbeatTimeoutSec() * 1000;
-  connection.heartbeatTimer = setTimeout(() => {
-    connection.socket.close(4000, 'heartbeat timeout');
-    setBotConnectionStatus(connection.botName, false);
-    botConnections.delete(connection.botName);
-  }, timeoutMs);
+function sendReject(
+  socket: WebSocket,
+  payload: RejectPayload,
+  reqId?: string,
+): void {
+  send(socket, 'order.reject', payload, reqId);
 }
 
 function startServerHeartbeat(connection: BotConnection): void {
@@ -91,21 +151,16 @@ function startServerHeartbeat(connection: BotConnection): void {
     Math.floor((getHeartbeatTimeoutSec() * 1000) / 2),
   );
   connection.serverHeartbeat = setInterval(() => {
-    send(connection.socket, {
-      type: 'heartbeat',
-      ts: Date.now(),
-      payload: { ts: Date.now() },
-    });
+    send(connection.socket, 'heartbeat', { ts: Date.now() });
   }, timeoutMs) as NodeJS.Timeout;
 }
 
 function stopConnectionTimers(connection: BotConnection): void {
-  clearTimeout(connection.heartbeatTimer);
   clearInterval(connection.serverHeartbeat);
 }
 
-function sendHello(connection: BotConnection, config: RunConfig | null): void {
-  const payload = {
+function buildHelloPayload(config: RunConfig | null) {
+  return {
     symbols: config?.instruments.map((instrument) => instrument.symbol) ?? [],
     fees:
       config?.instruments.reduce<
@@ -121,60 +176,32 @@ function sendHello(connection: BotConnection, config: RunConfig | null): void {
       maxActiveOrders: config?.maxActiveOrders ?? 0,
     },
   };
-  send(connection.socket, {
-    type: 'hello',
-    ts: Date.now(),
-    payload,
-  });
+}
+
+function sendHello(connection: BotConnection, config: RunConfig | null): void {
+  send(connection.socket, 'hello', buildHelloPayload(config));
 }
 
 function sendDepthSnapshot(connection: BotConnection, symbol: string): void {
   const mid = getLastPrice(symbol);
-  const bids = [
-    [String(mid - 1000), '2'],
-    [String(mid - 500), '1'],
+  const bids: Array<[string, string]> = [
+    [(mid - 1000n).toString(), '2'],
+    [(mid - 500n).toString(), '1'],
   ];
-  const asks = [
-    [String(mid + 500), '1'],
-    [String(mid + 1000), '2'],
+  const asks: Array<[string, string]> = [
+    [(mid + 500n).toString(), '1'],
+    [(mid + 1000n).toString(), '2'],
   ];
-  send(connection.socket, {
-    type: 'depth.snapshot',
-    ts: Date.now(),
-    payload: { symbol, bids, asks },
-  });
+  send(connection.socket, 'depth.snapshot', { symbol, bids, asks });
 }
 
-function sendBalanceUpdate(botName: string, balanceInt: number): void {
-  const message: WsEnvelope = {
-    type: 'balance.update',
-    ts: Date.now(),
-    payload: { botName, balanceInt },
-  };
+function sendBalanceUpdate(botName: string, balanceInt: string): void {
+  const message = { botName, balanceInt };
   const connection = botConnections.get(botName);
   if (connection) {
-    send(connection.socket, message);
+    send(connection.socket, 'balance.update', message);
   }
-  broadcastToUi(message);
-}
-
-function toFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  if (typeof value === 'bigint') {
-    return Number(value);
-  }
-  return null;
-}
-
-function toOptionalFiniteNumber(value: unknown): number | undefined {
-  const result = toFiniteNumber(value);
-  return result === null ? undefined : result;
+  broadcastToUi('balance.update', message);
 }
 
 function extractClientOrderId(payload: unknown): string | undefined {
@@ -184,324 +211,41 @@ function extractClientOrderId(payload: unknown): string | undefined {
   const record = payload as Record<string, unknown>;
   const raw = record['clientOrderId'];
   if (typeof raw === 'string' && raw.trim().length > 0) {
-    return raw;
+    return raw.trim();
   }
   return undefined;
 }
 
-function normalizeOrderPlacePayload(
-  payload: unknown,
-): NormalizedOrderPlacePayload | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
+function computeFeeInt(
+  priceInt: string,
+  qtyInt: string,
+  feeBp: number,
+  log: FastifyInstance['log'],
+): string {
+  try {
+    const notional = BigInt(priceInt) * BigInt(qtyInt);
+    const scale = 100n;
+    const scaledFee = BigInt(Math.round(feeBp * Number(scale)));
+    return ((notional * scaledFee) / (10000n * scale)).toString();
+  } catch (error) {
+    const priceNum = Number(priceInt);
+    const qtyNum = Number(qtyInt);
+    if (Number.isFinite(priceNum) && Number.isFinite(qtyNum)) {
+      const feeValue = Math.floor((priceNum * qtyNum * feeBp) / 10000);
+      if (Number.isFinite(feeValue)) {
+        return feeValue.toString();
+      }
+    }
+    log.warn(
+      { priceInt, qtyInt, feeBp, error },
+      'failed to compute feeInt, defaulting to zero',
+    );
+    return '0';
   }
-  const record = payload as Record<string, unknown>;
-  const clientOrderId =
-    typeof record['clientOrderId'] === 'string'
-      ? record['clientOrderId'].trim()
-      : '';
-  const symbol =
-    typeof record['symbol'] === 'string' ? record['symbol'].trim() : '';
-  if (!clientOrderId || !symbol) {
-    return null;
-  }
-
-  const side = record['side'];
-  if (side !== 'buy' && side !== 'sell') {
-    return null;
-  }
-
-  const type = record['type'];
-  const validTypes: Array<OrderRecord['type']> = [
-    'MARKET',
-    'LIMIT',
-    'STOP_MARKET',
-    'STOP_LIMIT',
-  ];
-  if (
-    typeof type !== 'string' ||
-    !validTypes.includes(type as OrderRecord['type'])
-  ) {
-    return null;
-  }
-
-  const qty = toFiniteNumber(record['qtyInt']);
-  if (qty === null) {
-    return null;
-  }
-
-  const timeInForce: OrderRecord['timeInForce'] =
-    record['timeInForce'] === 'GTC' || record['timeInForce'] === undefined
-      ? 'GTC'
-      : 'GTC';
-  const flagsRaw = record['flags'];
-  const flags: OrderFlag[] = Array.isArray(flagsRaw)
-    ? (flagsRaw.filter((flag) => flag === 'postOnly') as OrderFlag[])
-    : [];
-
-  const priceInt = toOptionalFiniteNumber(record['priceInt']);
-  const stopPriceInt = toOptionalFiniteNumber(record['stopPriceInt']);
-  const limitPriceInt = toOptionalFiniteNumber(record['limitPriceInt']);
-
-  return {
-    clientOrderId,
-    symbol,
-    side,
-    type: type as OrderRecord['type'],
-    qtyInt: qty,
-    priceInt,
-    stopPriceInt,
-    limitPriceInt,
-    timeInForce,
-    flags,
-  };
 }
 
-function normalizeOrderCancelPayload(
-  payload: unknown,
-): OrderCancelPayload | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-  const record = payload as Record<string, unknown>;
-  const raw = record['serverOrderId'];
-  const serverOrderId =
-    typeof raw === 'string'
-      ? raw.trim()
-      : raw !== undefined && raw !== null
-        ? String(raw).trim()
-        : '';
-  if (!serverOrderId) {
-    return null;
-  }
-  return { serverOrderId };
-}
-
-function normalizeHelloPayload(payload: unknown): HelloPayload | null {
-  if (!payload || typeof payload !== 'object') {
-    return null;
-  }
-  const record = payload as Record<string, unknown>;
-  const rawBotName = record['botName'];
-  const botName =
-    typeof rawBotName === 'string'
-      ? rawBotName.trim()
-      : rawBotName !== undefined && rawBotName !== null
-        ? String(rawBotName).trim()
-        : '';
-  if (!botName) {
-    return null;
-  }
-  const initialBalance = toFiniteNumber(record['initialBalanceInt']);
-  return { botName, initialBalanceInt: initialBalance ?? 0 };
-}
-
-async function handleOrderPlace(
-  connection: BotConnection,
-  envelope: WsEnvelope,
-  payload: unknown,
-): Promise<void> {
-  const config = getRunConfig();
-  if (!config) {
-    send(connection.socket, {
-      type: 'order.reject',
-      ts: Date.now(),
-      payload: {
-        clientOrderId: extractClientOrderId(payload),
-        reason: 'RUN_NOT_CONFIGURED',
-      },
-      reqId: envelope.reqId,
-    });
-    return;
-  }
-
-  const orderPayload = normalizeOrderPlacePayload(payload);
-  const clientOrderId =
-    orderPayload?.clientOrderId ?? extractClientOrderId(payload);
-  if (!orderPayload) {
-    send(connection.socket, {
-      type: 'order.reject',
-      ts: Date.now(),
-      payload: { clientOrderId, reason: 'INVALID_ORDER' },
-      reqId: envelope.reqId,
-    });
-    return;
-  }
-
-  const symbolConfig = config.instruments.find(
-    (instrument) => instrument.symbol === orderPayload.symbol,
-  );
-  if (!symbolConfig) {
-    send(connection.socket, {
-      type: 'order.reject',
-      ts: Date.now(),
-      payload: {
-        clientOrderId: orderPayload.clientOrderId,
-        reason: 'UNKNOWN_SYMBOL',
-      },
-      reqId: envelope.reqId,
-    });
-    return;
-  }
-
-  const active = countActiveOrders(connection.botName);
-  if (active >= config.maxActiveOrders) {
-    send(connection.socket, {
-      type: 'order.reject',
-      ts: Date.now(),
-      payload: {
-        clientOrderId: orderPayload.clientOrderId,
-        reason: 'RATE_LIMIT',
-      },
-      reqId: envelope.reqId,
-    });
-    return;
-  }
-
-  const serverOrderId = nextOrderId();
-  const order: OrderRecord = buildOrderRecord({
-    serverOrderId,
-    clientOrderId: orderPayload.clientOrderId,
-    botName: connection.botName,
-    symbol: orderPayload.symbol,
-    side: orderPayload.side,
-    type: orderPayload.type,
-    qtyInt: orderPayload.qtyInt,
-    priceInt: orderPayload.priceInt,
-    stopPriceInt: orderPayload.stopPriceInt,
-    limitPriceInt: orderPayload.limitPriceInt,
-    timeInForce: orderPayload.timeInForce,
-    flags: orderPayload.flags,
-    status: 'accepted',
-  });
-
-  addOrder(order);
-
-  send(connection.socket, {
-    type: 'order.ack',
-    ts: Date.now(),
-    payload: {
-      clientOrderId: orderPayload.clientOrderId,
-      serverOrderId,
-      status: 'accepted',
-    },
-    reqId: envelope.reqId,
-  });
-
-  if (orderPayload.type !== 'MARKET') {
-    updateOrderStatus(serverOrderId, 'open');
-    send(connection.socket, {
-      type: 'order.update',
-      ts: Date.now(),
-      payload: { serverOrderId, status: 'open' },
-    });
-    await persistFullState();
-    return;
-  }
-
-  const priceInt = orderPayload.priceInt ?? getLastPrice(orderPayload.symbol);
-  const qtyInt = orderPayload.qtyInt;
-  const takerFeeBp = symbolConfig.fees.takerBp;
-  const feeInt = Math.floor((priceInt * qtyInt * takerFeeBp) / 10_000);
-
-  updateOrderStatus(serverOrderId, 'filled');
-
-  const liquidity: 'maker' | 'taker' = orderPayload.flags.includes('postOnly')
-    ? 'maker'
-    : 'taker';
-
-  send(connection.socket, {
-    type: 'order.fill',
-    ts: Date.now(),
-    payload: { serverOrderId, priceInt, qtyInt, liquidity, feeInt },
-  });
-
-  send(connection.socket, {
-    type: 'order.update',
-    ts: Date.now(),
-    payload: { serverOrderId, status: 'filled' },
-  });
-
-  send(connection.socket, {
-    type: 'trade',
-    ts: Date.now(),
-    payload: {
-      symbol: orderPayload.symbol,
-      priceInt,
-      qtyInt,
-      side: orderPayload.side,
-    },
-  });
-
-  const bot = getBot(connection.botName);
-  if (bot) {
-    const delta = priceInt * qtyInt;
-    const newBalance =
-      orderPayload.side === 'buy'
-        ? bot.currentBalanceInt - delta - feeInt
-        : bot.currentBalanceInt + delta - feeInt;
-    updateBotBalance(connection.botName, newBalance);
-    sendBalanceUpdate(connection.botName, newBalance);
-  }
-
-  addTrade({
-    serverOrderId,
-    botName: connection.botName,
-    symbol: orderPayload.symbol,
-    priceInt,
-    qtyInt,
-    side: orderPayload.side,
-    liquidity,
-    feeInt,
-    ts: Date.now(),
-  });
-
-  await persistFullState();
-}
-
-async function handleOrderCancel(
-  connection: BotConnection,
-  payload: unknown,
-): Promise<void> {
-  const normalized = normalizeOrderCancelPayload(payload);
-  if (!normalized) {
-    send(connection.socket, {
-      type: 'order.reject',
-      ts: Date.now(),
-      payload: { reason: 'INVALID_CANCEL' },
-    });
-    return;
-  }
-
-  const order = updateOrderStatus(normalized.serverOrderId, 'canceled');
-  if (!order) {
-    send(connection.socket, {
-      type: 'order.reject',
-      ts: Date.now(),
-      payload: {
-        serverOrderId: normalized.serverOrderId,
-        reason: 'UNKNOWN_ORDER',
-      },
-    });
-    return;
-  }
-  send(connection.socket, {
-    type: 'order.cancel',
-    ts: Date.now(),
-    payload: { serverOrderId: normalized.serverOrderId, status: 'canceled' },
-  });
-  await persistFullState();
-}
-
-function handleBotDisconnect(connection: BotConnection): void {
-  stopConnectionTimers(connection);
-  setBotConnectionStatus(connection.botName, false);
-  botConnections.delete(connection.botName);
-}
-
-function registerUi(connection: SocketStream): void {
-  const { socket } = connection;
-  uiClients.add(socket as WebSocket);
+function registerUi(socket: WebSocket): void {
+  uiClients.add(socket);
   const interval = setInterval(() => {
     if (socket.readyState !== socket.OPEN) {
       return;
@@ -514,57 +258,361 @@ function registerUi(connection: SocketStream): void {
       }),
     );
   }, 5000);
-
   socket.on('close', () => {
     clearInterval(interval);
-    uiClients.delete(socket as WebSocket);
+    uiClients.delete(socket);
+  });
+}
+
+function handleBotDisconnect(
+  server: FastifyInstance,
+  connection: BotConnection,
+): void {
+  stopConnectionTimers(connection);
+  if (!connection.botName) {
+    return;
+  }
+  botConnections.delete(connection.botName);
+  setBotConnectionStatus(connection.botName, false);
+  server.log.info({ bot: connection.botName }, 'bot disconnected');
+}
+
+function attachBotConnection(
+  server: FastifyInstance,
+  botName: string,
+  connection: BotConnection,
+): void {
+  const previous = botConnections.get(botName);
+  if (previous && previous.socket !== connection.socket) {
+    server.log.info(
+      { bot: botName },
+      'bot reconnecting, replacing previous socket',
+    );
+    stopConnectionTimers(previous);
+    try {
+      previous.socket.close(4001, 'replaced by reconnect');
+    } catch (error) {
+      server.log.warn(
+        { bot: botName, error },
+        'failed to close previous socket on reconnect',
+      );
+    }
+  }
+  connection.botName = botName;
+  connection.lastHeartbeat = Date.now();
+  botConnections.set(botName, connection);
+  setBotConnectionStatus(botName, true);
+  startServerHeartbeat(connection);
+}
+
+async function handleOrderPlace(
+  server: FastifyInstance,
+  connection: BotConnection,
+  envelope: ParsedEnvelope,
+  rawPayload: unknown,
+): Promise<void> {
+  const parsed = PlaceSchema.safeParse(rawPayload);
+  if (!parsed.success) {
+    const clientOrderId = extractClientOrderId(rawPayload);
+    sendReject(
+      connection.socket,
+      {
+        code: 'VALIDATION',
+        message: 'invalid order payload',
+        clientOrderId,
+      },
+      envelope.reqId,
+    );
+    server.log.warn(
+      { bot: connection.botName, error: parsed.error.format() },
+      'order.place validation failed',
+    );
+    return;
+  }
+
+  const payload = parsed.data;
+  const config = getRunConfig();
+  if (!config) {
+    sendReject(
+      connection.socket,
+      {
+        code: 'NOT_FOUND',
+        message: 'run not configured',
+        clientOrderId: payload.clientOrderId,
+      },
+      envelope.reqId,
+    );
+    return;
+  }
+
+  const symbolConfig = config.instruments.find(
+    (instrument) => instrument.symbol === payload.symbol,
+  );
+  if (!symbolConfig) {
+    sendReject(
+      connection.socket,
+      {
+        code: 'VALIDATION',
+        message: 'unknown symbol',
+        clientOrderId: payload.clientOrderId,
+      },
+      envelope.reqId,
+    );
+    return;
+  }
+
+  const activeOrders = countActiveOrders(connection.botName);
+  if (activeOrders >= config.maxActiveOrders) {
+    sendReject(
+      connection.socket,
+      {
+        code: 'RATE_LIMIT',
+        message: 'too many active orders',
+        clientOrderId: payload.clientOrderId,
+      },
+      envelope.reqId,
+    );
+    server.log.warn(
+      { bot: connection.botName, clientOrderId: payload.clientOrderId },
+      'order rejected by rate limit',
+    );
+    return;
+  }
+
+  const serverOrderId = nextOrderId();
+  const order = buildOrderRecord({
+    serverOrderId,
+    clientOrderId: payload.clientOrderId,
+    botName: connection.botName,
+    symbol: payload.symbol,
+    side: payload.side,
+    type: payload.type,
+    qtyInt: payload.qtyInt,
+    priceInt: payload.priceInt,
+    stopPriceInt: payload.stopPriceInt,
+    limitPriceInt: payload.limitPriceInt,
+    timeInForce: payload.timeInForce,
+    flags: payload.flags,
+    status: 'accepted',
+  });
+
+  addOrder(order);
+  server.log.info(
+    {
+      bot: connection.botName,
+      clientOrderId: payload.clientOrderId,
+      serverOrderId,
+      type: payload.type,
+      symbol: payload.symbol,
+    },
+    'order accepted',
+  );
+
+  send(
+    connection.socket,
+    'order.ack',
+    {
+      clientOrderId: payload.clientOrderId,
+      serverOrderId,
+      status: 'accepted',
+    },
+    envelope.reqId,
+  );
+
+  if (payload.type !== 'MARKET') {
+    updateOrderStatus(serverOrderId, 'open');
+    send(connection.socket, 'order.update', { serverOrderId, status: 'open' });
+    await persistFullState();
+    return;
+  }
+
+  const priceInt = payload.priceInt ?? getLastPrice(payload.symbol).toString();
+  const qtyInt = payload.qtyInt;
+  const feeInt = computeFeeInt(
+    priceInt,
+    qtyInt,
+    symbolConfig.fees.takerBp,
+    server.log,
+  );
+  const liquidity = payload.flags.includes('postOnly') ? 'maker' : 'taker';
+
+  updateOrderStatus(serverOrderId, 'filled');
+
+  send(connection.socket, 'order.fill', {
+    serverOrderId,
+    priceInt,
+    qtyInt,
+    liquidity,
+    feeInt,
+  });
+  send(connection.socket, 'order.update', { serverOrderId, status: 'filled' });
+  send(connection.socket, 'trade', {
+    symbol: payload.symbol,
+    priceInt,
+    qtyInt,
+    side: payload.side,
+  });
+
+  const bot = getBot(connection.botName);
+  if (bot) {
+    try {
+      const balance = BigInt(bot.currentBalanceInt);
+      const notional = BigInt(priceInt) * BigInt(qtyInt);
+      const fee = BigInt(feeInt);
+      const nextBalance =
+        payload.side === 'buy'
+          ? balance - notional - fee
+          : balance + notional - fee;
+      const nextBalanceStr = nextBalance.toString();
+      updateBotBalance(connection.botName, nextBalanceStr);
+      sendBalanceUpdate(connection.botName, nextBalanceStr);
+    } catch (error) {
+      server.log.warn(
+        { bot: connection.botName, error },
+        'failed to compute balance delta',
+      );
+    }
+  }
+
+  addTrade({
+    serverOrderId,
+    botName: connection.botName,
+    symbol: payload.symbol,
+    priceInt,
+    qtyInt,
+    side: payload.side,
+    liquidity,
+    feeInt,
+    ts: Date.now(),
+  });
+
+  await persistFullState();
+}
+
+async function handleOrderCancel(
+  server: FastifyInstance,
+  connection: BotConnection,
+  envelope: ParsedEnvelope,
+  rawPayload: unknown,
+): Promise<void> {
+  const parsed = CancelSchema.safeParse(rawPayload);
+  if (!parsed.success) {
+    sendReject(
+      connection.socket,
+      { code: 'VALIDATION', message: 'invalid cancel payload' },
+      envelope.reqId,
+    );
+    server.log.warn(
+      { bot: connection.botName, error: parsed.error.format() },
+      'order.cancel validation failed',
+    );
+    return;
+  }
+
+  const { serverOrderId } = parsed.data;
+  const order = updateOrderStatus(serverOrderId, 'canceled');
+  if (!order) {
+    sendReject(
+      connection.socket,
+      {
+        code: 'NOT_FOUND',
+        message: 'order not found',
+        serverOrderId,
+      },
+      envelope.reqId,
+    );
+    return;
+  }
+
+  send(connection.socket, 'order.cancel', {
+    serverOrderId,
+    status: 'canceled',
+  });
+
+  await persistFullState();
+}
+
+function ensureHeartbeatSweep(server: FastifyInstance): void {
+  if (heartbeatSweep) {
+    return;
+  }
+  heartbeatSweep = setInterval(() => {
+    const timeoutMs = getHeartbeatTimeoutSec() * 1000;
+    const now = Date.now();
+    for (const [botName, connection] of botConnections) {
+      if (now - connection.lastHeartbeat > timeoutMs) {
+        server.log.warn(
+          { bot: botName, lastHeartbeat: connection.lastHeartbeat, timeoutMs },
+          'bot heartbeat timed out (soft disconnect)',
+        );
+      }
+    }
+  }, 1000);
+  server.addHook('onClose', async () => {
+    if (heartbeatSweep) {
+      clearInterval(heartbeatSweep);
+      heartbeatSweep = null;
+    }
   });
 }
 
 export function registerWsHandlers(server: FastifyInstance): void {
-  server.get('/ws', { websocket: true }, (connection, req) => {
+  ensureHeartbeatSweep(server);
+
+  server.get('/ws', { websocket: true }, (rawConnection, req) => {
+    const socket = resolveSocket(
+      rawConnection as FastifyWsConnection | WebSocket,
+    );
     const { role } = parseQuery(req.raw as IncomingMessage);
     if (role === 'ui') {
-      registerUi(connection);
+      registerUi(socket);
       return;
     }
 
-    const socket = connection.socket as WebSocket;
     const botConnection: BotConnection = {
       botName: '',
       socket,
+      lastHeartbeat: Date.now(),
     };
 
     socket.on('message', (buffer: RawData) => {
-      let envelope: WsEnvelope<unknown>;
+      let decoded: unknown;
       try {
-        envelope = JSON.parse(buffer.toString()) as WsEnvelope<unknown>;
+        decoded = JSON.parse(buffer.toString());
       } catch (error) {
+        server.log.warn({ error }, 'failed to parse websocket payload');
         return;
       }
 
-      if (envelope.type !== 'heartbeat') {
-        touchBot(botConnection.botName);
+      const envelopeResult = EnvelopeSchema.safeParse(decoded);
+      if (!envelopeResult.success) {
+        server.log.warn(
+          { error: envelopeResult.error.format() },
+          'invalid websocket envelope',
+        );
+        return;
       }
+      const envelope = envelopeResult.data;
 
       switch (envelope.type) {
         case 'hello': {
-          const helloPayload = normalizeHelloPayload(envelope.payload);
-          if (!helloPayload) {
-            send(socket, {
-              type: 'order.reject',
-              ts: Date.now(),
-              payload: { reason: 'INVALID_HELLO' },
-              reqId: envelope.reqId,
-            });
+          const parsed = HelloSchema.safeParse(envelope.payload);
+          if (!parsed.success) {
+            sendReject(
+              socket,
+              { code: 'VALIDATION', message: 'invalid hello payload' },
+              envelope.reqId,
+            );
+            server.log.warn(
+              { error: parsed.error.format() },
+              'bot hello validation failed',
+            );
             return;
           }
-          const { botName, initialBalanceInt } = helloPayload;
-          botConnection.botName = botName;
-          botConnections.set(botName, botConnection);
-          upsertBot(botName, initialBalanceInt);
-          scheduleHeartbeatTimeout(botConnection);
-          startServerHeartbeat(botConnection);
+          const { botName, initialBalanceInt } = parsed.data;
+          attachBotConnection(server, botName, botConnection);
+          const botState = upsertBot(botName, initialBalanceInt);
+          touchBot(botName);
           sendHello(botConnection, getRunConfig());
           const config = getRunConfig();
           if (config) {
@@ -572,44 +620,95 @@ export function registerWsHandlers(server: FastifyInstance): void {
               sendDepthSnapshot(botConnection, instrument.symbol);
             }
           }
-          sendBalanceUpdate(
-            botName,
-            getBot(botName)?.currentBalanceInt ?? initialBalanceInt,
-          );
+          const balance =
+            getBot(botName)?.currentBalanceInt ?? botState.currentBalanceInt;
+          sendBalanceUpdate(botName, balance);
           void persistFullState();
+          server.log.info({ bot: botName }, 'bot connected');
           break;
         }
         case 'heartbeat': {
           if (!botConnection.botName) {
             return;
           }
-          scheduleHeartbeatTimeout(botConnection);
+          botConnection.lastHeartbeat = Date.now();
+          touchBot(botConnection.botName);
+          const payload = HeartbeatSchema.safeParse(envelope.payload);
+          if (!payload.success) {
+            server.log.warn(
+              { bot: botConnection.botName, error: payload.error.format() },
+              'invalid heartbeat payload',
+            );
+          }
+          send(socket, 'heartbeat', { ts: Date.now() }, envelope.reqId);
           break;
         }
         case 'order.place': {
           if (!botConnection.botName) {
+            sendReject(
+              socket,
+              {
+                code: 'VALIDATION',
+                message: 'hello required before order.place',
+              },
+              envelope.reqId,
+            );
             return;
           }
-          scheduleHeartbeatTimeout(botConnection);
+          botConnection.lastHeartbeat = Date.now();
+          touchBot(botConnection.botName);
           void handleOrderPlace(
+            server,
             botConnection,
             envelope,
             envelope.payload,
           ).catch((error) => {
-            console.error('order.place failed', error);
+            server.log.error(
+              { bot: botConnection.botName, error },
+              'order.place handler failed',
+            );
+            sendReject(
+              socket,
+              {
+                code: 'INTERNAL',
+                message: 'internal error',
+                clientOrderId: extractClientOrderId(envelope.payload),
+              },
+              envelope.reqId,
+            );
           });
           break;
         }
         case 'order.cancel': {
           if (!botConnection.botName) {
+            sendReject(
+              socket,
+              {
+                code: 'VALIDATION',
+                message: 'hello required before order.cancel',
+              },
+              envelope.reqId,
+            );
             return;
           }
-          scheduleHeartbeatTimeout(botConnection);
-          void handleOrderCancel(botConnection, envelope.payload).catch(
-            (error) => {
-              console.error('order.cancel failed', error);
-            },
-          );
+          botConnection.lastHeartbeat = Date.now();
+          touchBot(botConnection.botName);
+          void handleOrderCancel(
+            server,
+            botConnection,
+            envelope,
+            envelope.payload,
+          ).catch((error) => {
+            server.log.error(
+              { bot: botConnection.botName, error },
+              'order.cancel handler failed',
+            );
+            sendReject(
+              socket,
+              { code: 'INTERNAL', message: 'internal error' },
+              envelope.reqId,
+            );
+          });
           break;
         }
         default:
@@ -618,8 +717,12 @@ export function registerWsHandlers(server: FastifyInstance): void {
     });
 
     socket.on('close', () => {
-      handleBotDisconnect(botConnection);
+      handleBotDisconnect(server, botConnection);
       void persistFullState();
+    });
+
+    socket.on('error', (error: unknown) => {
+      server.log.error({ error }, 'websocket error');
     });
   });
 }

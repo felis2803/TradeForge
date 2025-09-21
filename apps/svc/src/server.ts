@@ -12,6 +12,7 @@ import {
   setStatus,
 } from './state.js';
 import {
+  RUNS_ROOT,
   prepareRunArtifacts,
   persistFullState,
   persistRunStatus,
@@ -28,10 +29,33 @@ const server = Fastify({
   logger: true,
 });
 
+const allowedOriginsEnv = process.env.CORS_ORIGIN;
+const defaultOrigin =
+  process.env.NODE_ENV === 'production' ? undefined : 'http://localhost:5173';
+const allowedOrigins = (allowedOriginsEnv ?? defaultOrigin ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);
+
 await server.register(cors, {
-  origin: true,
-  methods: ['GET', 'POST'],
+  origin(origin, callback) {
+    if (!allowedOrigins.length || !origin) {
+      callback(null, true);
+      return;
+    }
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('origin not allowed'), false);
+  },
+  credentials: true,
 });
+
+server.log.info(
+  { runsDir: process.env.RUNS_DIR ?? RUNS_ROOT },
+  'persistence directory configured',
+);
 
 await server.register(websocket, {
   options: {
@@ -174,6 +198,7 @@ server.post('/v1/runs/start', async (request, reply) => {
     setRunSpeed(body.speed);
   }
   setStatus('running');
+  server.log.info({ status: 'running' }, 'run transition');
   await persistFullState();
   return { status: 'running', run: getSnapshot() };
 });
@@ -184,6 +209,7 @@ server.post('/v1/runs/pause', async (request, reply) => {
     return { error: 'RUN_NOT_CONFIGURED' };
   }
   setStatus('paused');
+  server.log.info({ status: 'paused' }, 'run transition');
   await persistFullState();
   return { status: 'paused', run: getSnapshot() };
 });
@@ -194,6 +220,7 @@ server.post('/v1/runs/stop', async (request, reply) => {
     return { error: 'RUN_NOT_CONFIGURED' };
   }
   setStatus('stopped');
+  server.log.info({ status: 'stopped' }, 'run transition');
   await persistFullState();
   return { status: 'stopped', run: getSnapshot() };
 });

@@ -1,51 +1,59 @@
-#!/usr/bin/env node
-import WebSocket from 'ws';
+// Minimal bot emulator reflecting protocol & codes
+const WS = require('ws');
 
-const BOT_NAME = process.argv[2] ?? 'sample-bot';
-const INITIAL_BALANCE = Number(process.argv[3] ?? 1_000_000);
-const WS_URL = process.argv[4] ?? 'ws://localhost:3001/ws';
+const url = process.env.WS_URL || 'ws://localhost:3001/ws';
+const ws = new WS(url);
 
-const socket = new WebSocket(WS_URL);
+ws.on('open', () => {
+  console.log('[bot] connected to', url);
+  ws.send(
+    JSON.stringify({
+      type: 'hello',
+      ts: Date.now(),
+      payload: { botName: 'demo-bot', initialBalanceInt: '100000000' },
+    }),
+  );
 
-socket.on('open', () => {
-  console.log(`[bot] connected -> ${WS_URL}`);
-  send('hello', { botName: BOT_NAME, initialBalanceInt: INITIAL_BALANCE });
-  const heartbeat = setInterval(() => {
-    send('heartbeat', { ts: Date.now() });
-  }, 3000);
-  socket.on('close', () => clearInterval(heartbeat));
-
-  setTimeout(() => {
-    console.log('[bot] placing market order');
-    send('order.place', {
-      clientOrderId: `demo-${Date.now()}`,
-      symbol: 'BTCUSDT',
-      side: 'buy',
-      type: 'MARKET',
-      qtyInt: 1,
-      timeInForce: 'GTC',
-      flags: [],
-    });
+  setInterval(() => {
+    ws.send(JSON.stringify({ type: 'heartbeat', ts: Date.now(), payload: {} }));
   }, 2000);
+
+  setInterval(() => {
+    ws.send(
+      JSON.stringify({
+        type: 'order.place',
+        ts: Date.now(),
+        payload: {
+          clientOrderId: `c_${Date.now()}`,
+          symbol: 'BTCUSDT',
+          side: 'buy',
+          type: 'MARKET',
+          qtyInt: '1',
+          priceInt: '100',
+          timeInForce: 'GTC',
+        },
+      }),
+    );
+  }, 5000);
 });
 
-socket.on('message', (raw) => {
+ws.on('message', (raw) => {
   try {
-    const msg = JSON.parse(raw.toString());
-    console.log('[bot] message', msg.type, msg.payload);
+    const message = JSON.parse(raw.toString());
+    if (message.type === 'order.reject') {
+      console.log('REJECT', message.payload.code, message.payload.message);
+    } else {
+      console.log('<<', message.type, message.payload);
+    }
   } catch (error) {
     console.error('[bot] failed to parse', error);
   }
 });
 
-socket.on('close', () => {
-  console.log('[bot] connection closed');
+ws.on('close', () => {
+  console.log('[bot] disconnected');
 });
 
-socket.on('error', (error) => {
+ws.on('error', (error) => {
   console.error('[bot] error', error);
 });
-
-function send(type, payload) {
-  socket.send(JSON.stringify({ type, ts: Date.now(), payload }));
-}
