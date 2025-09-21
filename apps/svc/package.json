@@ -1,21 +1,29 @@
 {
   "name": "@tradeforge/svc",
-  "version": "0.1.0",
+  "private": true,
   "type": "module",
-  "bin": {
-    "tf-svc": "./bin/svc.mjs"
-  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "clean": "rimraf dist",
+    "predev": "pnpm --filter @tradeforge/schemas --filter @tradeforge/validation --filter @tradeforge/core build",
     "dev": "tsx src/server.ts",
-    "format": "prettier -w .",
-    "lint": "eslint . --ext .ts",
-    "test": "jest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "prebuild": "pnpm --filter @tradeforge/schemas --filter @tradeforge/validation --filter @tradeforge/core build",
+    "build": "tsc -p tsconfig.json",
+    "prestart": "pnpm --filter @tradeforge/schemas --filter @tradeforge/validation --filter @tradeforge/core build",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"(optional) add eslint later\""
   },
   "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "@fastify/websocket": "^10.0.1",
     "@tradeforge/core": "workspace:^",
-    "fastify": "^4.26.2"
+    "fastify": "^4.28.1",
+    "pino-pretty": "^11.2.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.4"
   }
 }

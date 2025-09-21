@@ -22,7 +22,6 @@ function resolveAmount(
       return toPriceInt(amount, symbol.priceScale);
     }
   }
-  // Неизвестная валюта — явная ошибка валидации для детерминизма
   throw new Error(`unknown currency: ${currency}`);
 }
 
@@ -67,7 +66,6 @@ export function registerAccountsRoutes(
       );
       reply.send(serializeBigInt(balance));
     } catch (err) {
-      // Преобразуем наше сообщение об ошибке в 400 Bad Request
       if (err instanceof Error && /unknown currency/.test(err.message)) {
         return reply.status(400).send({ message: err.message });
       }
