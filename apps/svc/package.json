@@ -1,21 +1,22 @@
 {
-  "name": "@tradeforge/svc",
-  "version": "0.1.0",
+  "name": "tradeforge-svc",
+  "private": true,
   "type": "module",
-  "bin": {
-    "tf-svc": "./bin/svc.mjs"
-  },
+  "main": "src/server.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "clean": "rimraf dist",
-    "dev": "tsx src/server.ts",
-    "format": "prettier -w .",
-    "lint": "eslint . --ext .ts",
-    "test": "jest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@tradeforge/core": "workspace:^",
+    "@fastify/cors": "^8.3.0",
+    "@fastify/websocket": "^8.3.1",
     "fastify": "^4.26.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.0.0",
+    "typescript": "^5.4.0"
   }
 }

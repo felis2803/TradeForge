@@ -1,86 +1,225 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify from 'fastify';
+import websocket from '@fastify/websocket';
+import cors from '@fastify/cors';
+
 import {
-  AccountsService,
-  ExchangeState,
-  OrdersService,
-  StaticMockOrderbook,
-  type FeeConfig,
-  type SymbolConfig,
-  toPriceInt,
-} from '@tradeforge/core';
-import { registerAccountsRoutes } from './routes/accounts.js';
-import { registerOrdersRoutes } from './routes/orders.js';
+  configureRun,
+  getRunConfig,
+  getSnapshot,
+  getTimestamps,
+  listBots,
+  setRunSpeed,
+  setStatus,
+} from './state.js';
+import {
+  prepareRunArtifacts,
+  persistFullState,
+  persistRunStatus,
+} from './persistence.js';
+import { registerWsHandlers } from './wsHandlers.js';
+import type {
+  InstrumentConfig,
+  RunConfig,
+  RunMode,
+  RunSpeed,
+} from './types.js';
 
-export interface ServiceContext {
-  state: ExchangeState;
-  accounts: AccountsService;
-  orders: OrdersService;
+const server = Fastify({
+  logger: true,
+});
+
+await server.register(cors, {
+  origin: true,
+  methods: ['GET', 'POST'],
+});
+
+await server.register(websocket, {
+  options: {
+    clientTracking: true,
+  },
+});
+
+registerWsHandlers(server);
+
+server.get('/v1/health', async () => ({ status: 'ok' }));
+
+function toFiniteNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+  return fallback;
 }
 
-const BTCUSDT_CONFIG: SymbolConfig = {
-  base: 'BTC',
-  quote: 'USDT',
-  priceScale: 5,
-  qtyScale: 6,
-};
+function normalizeInstrument(input: unknown): InstrumentConfig | null {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  const rawSymbol = record['symbol'];
+  const symbol =
+    typeof rawSymbol === 'string'
+      ? rawSymbol.trim()
+      : rawSymbol !== undefined && rawSymbol !== null
+        ? String(rawSymbol).trim()
+        : '';
+  if (!symbol) {
+    return null;
+  }
+  const feesRecord =
+    typeof record['fees'] === 'object' && record['fees'] !== null
+      ? (record['fees'] as Record<string, unknown>)
+      : undefined;
+  const makerSource =
+    feesRecord && 'makerBp' in feesRecord
+      ? feesRecord['makerBp']
+      : record['makerBp'];
+  const takerSource =
+    feesRecord && 'takerBp' in feesRecord
+      ? feesRecord['takerBp']
+      : record['takerBp'];
 
-const DEFAULT_SYMBOLS: Record<string, SymbolConfig> = {
-  BTCUSDT: BTCUSDT_CONFIG,
-};
-
-const DEFAULT_FEE: FeeConfig = {
-  makerBps: 5,
-  takerBps: 7,
-};
-
-function createDefaultState(): ExchangeState {
-  const orderbook = new StaticMockOrderbook({
-    best: {
-      BTCUSDT: {
-        bestBid: toPriceInt('27000', BTCUSDT_CONFIG.priceScale),
-        bestAsk: toPriceInt('27001', BTCUSDT_CONFIG.priceScale),
-      },
+  return {
+    symbol,
+    fees: {
+      makerBp: toFiniteNumber(makerSource, 0),
+      takerBp: toFiniteNumber(takerSource, 0),
     },
-  });
-  return new ExchangeState({
-    symbols: DEFAULT_SYMBOLS,
-    fee: DEFAULT_FEE,
-    orderbook,
-  });
+  };
 }
 
-export function createServices(): ServiceContext {
-  const state = createDefaultState();
-  const accounts = new AccountsService(state);
-  const orders = new OrdersService(state, accounts);
-  return { state, accounts, orders };
+function normalizeRunConfig(body: unknown): RunConfig {
+  const record =
+    body && typeof body === 'object' ? (body as Record<string, unknown>) : {};
+  const mode: RunMode = record['mode'] === 'history' ? 'history' : 'realtime';
+  const rawSpeed = record['speed'];
+  const allowedSpeeds: RunSpeed[] = [
+    'realtime',
+    '1x',
+    '2x',
+    'as_fast_as_possible',
+  ];
+  const speed: RunSpeed =
+    mode === 'history' &&
+    typeof rawSpeed === 'string' &&
+    allowedSpeeds.includes(rawSpeed as RunSpeed)
+      ? (rawSpeed as RunSpeed)
+      : mode === 'history'
+        ? '1x'
+        : 'realtime';
+
+  const instrumentsRaw = Array.isArray(record['instruments'])
+    ? record['instruments']
+    : [];
+  const instruments = instrumentsRaw
+    .map((instrument) => normalizeInstrument(instrument))
+    .filter(
+      (instrument): instrument is InstrumentConfig => instrument !== null,
+    );
+
+  const idValue = record['id'];
+  const id =
+    typeof idValue === 'string' && idValue.trim().length > 0
+      ? idValue
+      : `run-${Date.now()}`;
+
+  return {
+    id,
+    mode,
+    speed,
+    exchange:
+      typeof record['exchange'] === 'string'
+        ? (record['exchange'] as string)
+        : 'simulated',
+    dataOperator:
+      typeof record['dataOperator'] === 'string'
+        ? (record['dataOperator'] as string)
+        : 'internal',
+    instruments,
+    maxActiveOrders: toFiniteNumber(record['maxActiveOrders'], 50),
+    heartbeatTimeoutSec: toFiniteNumber(record['heartbeatTimeoutSec'], 6),
+    dataReady:
+      record['dataReady'] === undefined ? true : Boolean(record['dataReady']),
+  };
 }
 
-export function createServer(): FastifyInstance {
-  const services = createServices();
-  const app = Fastify({ logger: false });
+server.post('/v1/runs', async (request, reply) => {
+  const config = normalizeRunConfig(request.body ?? {});
+  if (!config.instruments.length) {
+    reply.code(400);
+    return { error: 'INSTRUMENTS_REQUIRED' };
+  }
 
-  registerAccountsRoutes(app, services);
-  registerOrdersRoutes(app, services);
+  configureRun(config);
+  await prepareRunArtifacts(config, getTimestamps());
+  await persistRunStatus(config.id, getSnapshot(), getTimestamps());
 
-  return app;
-}
+  return { status: 'configured', run: getSnapshot() };
+});
 
-export async function startServer(): Promise<FastifyInstance> {
-  const server = createServer();
-  await server.ready();
-  const port = Number(process.env['PORT'] ?? 3000);
-  const host = process.env['HOST'] ?? '0.0.0.0';
+server.post('/v1/runs/start', async (request, reply) => {
+  const config = getRunConfig();
+  if (!config) {
+    reply.code(400);
+    return { error: 'RUN_NOT_CONFIGURED' };
+  }
+  const body = (request.body ?? {}) as { speed?: RunSpeed };
+  if (body.speed) {
+    setRunSpeed(body.speed);
+  }
+  setStatus('running');
+  await persistFullState();
+  return { status: 'running', run: getSnapshot() };
+});
+
+server.post('/v1/runs/pause', async (request, reply) => {
+  if (!getRunConfig()) {
+    reply.code(400);
+    return { error: 'RUN_NOT_CONFIGURED' };
+  }
+  setStatus('paused');
+  await persistFullState();
+  return { status: 'paused', run: getSnapshot() };
+});
+
+server.post('/v1/runs/stop', async (request, reply) => {
+  if (!getRunConfig()) {
+    reply.code(400);
+    return { error: 'RUN_NOT_CONFIGURED' };
+  }
+  setStatus('stopped');
+  await persistFullState();
+  return { status: 'stopped', run: getSnapshot() };
+});
+
+server.get('/v1/runs/status', async () => {
+  return getSnapshot();
+});
+
+server.get('/v1/bots', async () => {
+  return {
+    bots: listBots().map((bot) => ({
+      botName: bot.botName,
+      initialBalanceInt: bot.initialBalanceInt,
+      currentBalanceInt: bot.currentBalanceInt,
+      connected: bot.connected,
+    })),
+  };
+});
+
+const port = Number(process.env.PORT ?? 3001);
+const host = process.env.HOST ?? '0.0.0.0';
+
+try {
   await server.listen({ port, host });
-
-  console.log(`svc listening on http://${host}:${port}`);
-  return server;
-}
-
-const invokedPath = process.argv[1] ?? '';
-if (invokedPath.endsWith('server.ts') || invokedPath.endsWith('server.js')) {
-  startServer().catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+  server.log.info(`TradeForge service listening on ${host}:${port}`);
+} catch (error) {
+  server.log.error(error, 'Failed to start service');
+  process.exit(1);
 }
