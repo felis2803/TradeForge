@@ -204,13 +204,14 @@ function createBaseStream<T, TRaw>(
   const queue = new AsyncQueue<T>();
   const emit = applyRateLimit(queue, options.rateLimit);
   const logger = options.logger;
-  const { params, handleMessage } = setup({
+  const setupContext: Parameters<typeof setup>[0] = {
     queue,
     symbol: options.symbol,
     emit,
     options,
-    logger,
-  });
+    ...(logger !== undefined ? { logger } : {}),
+  };
+  const { params, handleMessage } = setup(setupContext);
   const retry = {
     ...DEFAULT_RETRY,
     ...options.retry,
@@ -226,7 +227,7 @@ function createBaseStream<T, TRaw>(
     closed = true;
     if (backoff.timeout) {
       clearTimeout(backoff.timeout);
-      backoff.timeout = undefined;
+      delete backoff.timeout;
     }
     if (ws && ws.readyState === WebSocket.OPEN) {
       try {
@@ -275,7 +276,7 @@ function createBaseStream<T, TRaw>(
     const delay = computeBackoffDelay(backoff, retry);
     logger?.warn?.(`Reconnecting in ${delay}ms (attempt ${backoff.attempt})`);
     backoff.timeout = setTimeout(() => {
-      backoff.timeout = undefined;
+      delete backoff.timeout;
       connect();
     }, delay);
   };

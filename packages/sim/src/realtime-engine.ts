@@ -22,6 +22,7 @@ import type {
   ConservativePolicyConfig,
   DepthDiff,
   Engine,
+  EngineOptions,
   LiquidityConfig,
   RejectReason,
   SubmitOrder,
@@ -120,7 +121,9 @@ function toSubmitOrder(order: Order): SubmitOrder {
   return submit;
 }
 
-function mapRejectReason(reason: RejectReason): Order['rejectReason'] {
+function mapRejectReason(
+  reason: RejectReason,
+): NonNullable<Order['rejectReason']> {
   switch (reason) {
     case 'INVALID_ORDER':
       return 'INVALID_PARAMS';
@@ -180,13 +183,20 @@ export function createRealtimeEngine(
   const depthSource = normalizeStream(options.streams.depth);
   const tradeSource = normalizeStream(options.streams.trades);
   const book = new RealtimeOrderBook();
-  const engine = new EngineImpl({
+  const engineOptions: EngineOptions = {
     streams: { depth: depthSource.stream, trades: tradeSource.stream },
     book,
-    clock: options.clock,
-    policy: options.policy,
-    liquidity: options.liquidity,
-  });
+  };
+  if (options.clock !== undefined) {
+    engineOptions.clock = options.clock;
+  }
+  if (options.policy !== undefined) {
+    engineOptions.policy = options.policy;
+  }
+  if (options.liquidity !== undefined) {
+    engineOptions.liquidity = options.liquidity;
+  }
+  const engine = new EngineImpl(engineOptions);
 
   const eventBus = new RealtimeEventBus();
   const engineToCore = new Map<string, OrderId>();
@@ -300,7 +310,11 @@ export function createRealtimeEngine(
         return;
       }
       const order = options.orders.getOrder(orderId);
-      order.rejectReason = mapRejectReason(event.reason);
+      if (event.reason === undefined) {
+        order.rejectReason = mapRejectReason('INVALID_ORDER');
+      } else {
+        order.rejectReason = mapRejectReason(event.reason);
+      }
       order.status = 'REJECTED';
       eventBus.emit('orderRejected', order);
       eventBus.emit('orderUpdated', order);
