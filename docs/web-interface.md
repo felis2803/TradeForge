@@ -59,10 +59,10 @@
    <!-- TODO: добавить скриншот интерфейса -->
 
    ### Предварительная конфигурация
-   - Выберите **Биржу** и **Оператора данных**, чтобы описать источник данных песочницы.
-   - Установите **Режим запуска** (`Realtime` или `History`). Исторический режим открывает выбор диапазона дат и управление скоростью воспроизведения. Скорость задаётся при конфигурации запуска (`POST /v1/runs`) и действует только в режиме истории.
-   - Управляйте строками инструментов, чтобы определить тикеры и их комиссии мейкера/тейкера в базисных пунктах. Добавляйте дополнительные строки для мультиактивных симуляций.
-   - Настройте операционные лимиты, такие как **Максимум активных ордеров** и **Таймаут heartbeat (сек)**.
+   - Выберите **Биржу** и **Оператора данных**, чтобы описать источник данных песочницы. Для real-time режима доступны биржи, поддерживающие авторизованный WebSocket (Binance, OKX, Bybit, Coinbase).
+   - Установите **Режим запуска** (`Realtime` или `History`). Исторический режим открывает выбор диапазона дат и управление скоростью воспроизведения. Реал-тайм режим требует задать `apiKey`, `apiSecret` (или токен) и `listenKey`, если биржа использует отдельный ключ для приватного стрима. Скорость задаётся при конфигурации запуска (`POST /v1/runs`) и действует только в режиме истории.
+   - Управляйте строками инструментов, чтобы определить тикеры и их комиссии мейкера/тейкера в базисных пунктах. Добавляйте дополнительные строки для мультиактивных симуляций. В real-time режиме UI автоматически проверяет, что выбранные символы входят в разрешённый список подписок биржи.
+   - Настройте операционные лимиты, такие как **Максимум активных ордеров**, **Таймаут heartbeat (сек)** и **Максимальная частота подписок** (определяет throttle запросов `SUBSCRIBE`/`UNSUBSCRIBE`).
    - Включите **Статус данных**, когда исторический набор данных готов к запуску.
    - Нажмите **Применить**, чтобы отправить конфигурацию в `/v1/runs`.
 
@@ -87,14 +87,106 @@
        }'
      ```
 
+   #### Примеры конфигураций real-time (`POST /v1/runs`)
+
+   > **Сетевые требования:** backend должен иметь исходящий доступ по TCP 443/80 к выбранным биржам и разрешённые WebSocket соединения. Рекомендуемый таймаут установки соединения — 5 секунд, idle-timeout — 30 секунд. Для production окружений откройте egress только к перечисленным хостам и позвольте минимум три одновременных соединения на биржу для повторных подписок.
+   - **Binance Spot (BTCUSDT + ETHUSDT)**
+
+     ```bash
+     curl -X POST http://localhost:3001/v1/runs \
+       -H "Content-Type: application/json" \
+       -d '{
+         "id": "run-binance-realtime",
+         "mode": "realtime",
+         "exchange": "Binance",
+         "dataOperator": "RealtimeFeed",
+         "ws": {
+           "url": "wss://stream.binance.com:9443/ws",
+           "apiKey": "<BINANCE_API_KEY>",
+           "apiSecret": "<BINANCE_SECRET>",
+           "listenKey": "<USER_STREAM_LISTEN_KEY>",
+           "maxReconnects": 5,
+           "heartbeatMs": 1000
+         },
+         "instruments": [
+           { "symbol": "BTCUSDT", "fees": { "makerBp": 1, "takerBp": 1 } },
+           { "symbol": "ETHUSDT", "fees": { "makerBp": 1, "takerBp": 1 } }
+         ],
+         "maxActiveOrders": 200,
+         "heartbeatTimeoutSec": 5,
+         "subscriptionRatePerMin": 30
+       }'
+     ```
+
+   - **OKX Swap (BTC-USDT-SWAP)**
+
+     ```bash
+     curl -X POST http://localhost:3001/v1/runs \
+       -H "Content-Type: application/json" \
+       -d '{
+         "id": "run-okx-realtime",
+         "mode": "realtime",
+         "exchange": "OKX",
+         "dataOperator": "RealtimeFeed",
+         "ws": {
+           "url": "wss://ws.okx.com:8443/ws/v5/private",
+           "apiKey": "<OKX_API_KEY>",
+           "apiSecret": "<OKX_SECRET>",
+           "passphrase": "<OKX_PASSPHRASE>",
+           "maxReconnects": 10,
+           "heartbeatMs": 2000
+         },
+         "instruments": [
+           { "symbol": "BTC-USDT-SWAP", "fees": { "makerBp": 2, "takerBp": 5 } }
+         ],
+         "maxActiveOrders": 150,
+         "heartbeatTimeoutSec": 8,
+         "subscriptionRatePerMin": 20
+       }'
+     ```
+
+   - **Coinbase Advanced (BTC-USD)**
+
+     ```bash
+     curl -X POST http://localhost:3001/v1/runs \
+       -H "Content-Type: application/json" \
+       -d '{
+         "id": "run-coinbase-realtime",
+         "mode": "realtime",
+         "exchange": "Coinbase",
+         "dataOperator": "RealtimeFeed",
+         "ws": {
+           "url": "wss://advanced-trade-ws.coinbase.com",
+           "apiKey": "<COINBASE_API_KEY>",
+           "apiSecret": "<COINBASE_PRIVATE_KEY>",
+           "maxReconnects": 3,
+           "heartbeatMs": 1500
+         },
+         "instruments": [
+           { "symbol": "BTC-USD", "fees": { "makerBp": 6, "takerBp": 6 } }
+         ],
+         "maxActiveOrders": 50,
+         "heartbeatTimeoutSec": 10,
+         "subscriptionRatePerMin": 10,
+         "requestTimeoutMs": 4000
+       }'
+     ```
+
    ### Управление запуском
    - Строка статуса отражает `GET /v1/runs/status` и обновляется каждые пять секунд.
    - **Старт** вызывает `POST /v1/runs/start`, чтобы продолжить выполнение с ранее заданными параметрами.
    - **Пауза** (`POST /v1/runs/pause`) и **Стоп** (`POST /v1/runs/stop`) аккуратно сохраняют состояние, чтобы позже можно было продолжить или проиграть запуск заново.
 
+   #### Мониторинг real-time run
+   - Панель **Feed health** отображает текущий lag, последовательность последнего события и статус heartbeat. Цвет индикатора меняется с зелёного на жёлтый/красный при превышении `heartbeatTimeoutSec`.
+   - Кнопка **Reconnect now** принудительно закрывает WebSocket и инициирует реконнект, если feed завис.
+   - Лента событий показывает успешные и неуспешные попытки переподключения, включая коды ошибок, длительность простоя и время восстановления подписок.
+
    ### Панель ботов
    - Отображает подключённых ботов с их исходным балансом и последней моментальной копией баланса.
    - Балансы транслируются через WebSocket-сообщения `balance.update`; при переподключении бот сохраняет прежние балансы и историю.
+   - Новые индикаторы **Last trade latency** и **Order ACK latency** помогают контролировать задержку между входящими сделками и подтверждениями ордеров.
+   - Виджет **Feed status** дублирует показатели lag/heartbeat, чтобы оператору не приходилось переключаться между вкладками.
 
 ## Подключение ботов
 
