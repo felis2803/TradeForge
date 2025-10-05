@@ -10,8 +10,11 @@ import {
   buildOrderRecord,
   countActiveOrders,
   getBot,
+  getDepthSnapshot,
+  getFeedHealth,
   getHeartbeatTimeoutSec,
   getLastPrice,
+  getLastStreamTrade,
   getRunConfig,
   nextOrderId,
   setBotConnectionStatus,
@@ -47,6 +50,17 @@ interface BotConnection {
 const botConnections = new Map<string, BotConnection>();
 const uiClients = new Set<WebSocket>();
 let heartbeatSweep: NodeJS.Timeout | null = null;
+
+type DepthView = ReturnType<typeof getDepthSnapshot>;
+type StreamTradeView = ReturnType<typeof getLastStreamTrade>;
+
+interface DepthPayload {
+  symbol: string;
+  bids: Array<[string, string]>;
+  asks: Array<[string, string]>;
+  ts?: number | null;
+  seq?: number | null;
+}
 
 const EnvelopeSchema = z.object({
   type: z.string(),
@@ -136,6 +150,130 @@ function broadcastToUi(type: string, payload: unknown): void {
   }
 }
 
+function broadcastToBots(type: string, payload: unknown): void {
+  for (const connection of botConnections.values()) {
+    send(connection.socket, type, payload);
+  }
+}
+
+function buildDepthPayload(symbol: string, snapshot?: DepthView): DepthPayload {
+  if (!snapshot) {
+    return { symbol, bids: [], asks: [] };
+  }
+  const payload: DepthPayload = {
+    symbol,
+    bids: snapshot.bids,
+    asks: snapshot.asks,
+  };
+  if (snapshot.ts !== undefined && snapshot.ts !== null) {
+    payload.ts = snapshot.ts;
+  }
+  if (snapshot.seq !== undefined) {
+    payload.seq = snapshot.seq;
+  }
+  return payload;
+}
+
+function buildTradePayload(
+  symbol: string,
+  trade?: StreamTradeView,
+): {
+  symbol: string;
+  priceInt: string;
+  qtyInt: string;
+  side?: string;
+  ts: number;
+} | null {
+  if (!trade) {
+    return null;
+  }
+  return {
+    symbol,
+    priceInt: trade.priceInt,
+    qtyInt: trade.qtyInt,
+    side: trade.side,
+    ts: trade.ts,
+  };
+}
+
+function sendInitialMarketData(socket: WebSocket): void {
+  const config = getRunConfig();
+  if (config) {
+    for (const instrument of config.instruments) {
+      const depthPayload = buildDepthPayload(
+        instrument.symbol,
+        getDepthSnapshot(instrument.symbol),
+      );
+      if (
+        depthPayload.bids.length ||
+        depthPayload.asks.length ||
+        depthPayload.ts !== undefined
+      ) {
+        send(socket, 'depth.snapshot', depthPayload);
+      }
+      const tradePayload = buildTradePayload(
+        instrument.symbol,
+        getLastStreamTrade(instrument.symbol),
+      );
+      if (tradePayload) {
+        send(socket, 'market.trade', tradePayload);
+      }
+    }
+  }
+  const health = getFeedHealth();
+  send(socket, 'feed.health', health);
+}
+
+export function broadcastDepthUpdate(symbol: string): void {
+  const payload = buildDepthPayload(symbol, getDepthSnapshot(symbol));
+  broadcastToBots('depth.update', payload);
+  broadcastToUi('depth.update', payload);
+}
+
+export function broadcastTradeUpdate(symbol: string): void {
+  const payload = buildTradePayload(symbol, getLastStreamTrade(symbol));
+  if (!payload) {
+    return;
+  }
+  broadcastToBots('market.trade', payload);
+  broadcastToUi('market.trade', payload);
+}
+
+export function broadcastFeedHealth(
+  status: ReturnType<typeof getFeedHealth>,
+): void {
+  broadcastToBots('feed.health', status);
+  broadcastToUi('feed.health', status);
+}
+
+export function notifyOrderUpdate(
+  botName: string | null,
+  payload: Record<string, unknown>,
+): void {
+  if (botName) {
+    const connection = botConnections.get(botName);
+    if (connection) {
+      send(connection.socket, 'order.update', payload);
+    }
+  }
+  const enriched = botName ? { ...payload, botName } : payload;
+  broadcastToUi('order.update', enriched);
+}
+
+export function notifyOrderFill(
+  botName: string | null,
+  payload: Record<string, unknown>,
+): void {
+  if (botName) {
+    const connection = botConnections.get(botName);
+    if (connection) {
+      send(connection.socket, 'order.fill', payload);
+    }
+  }
+  const enriched = botName ? { ...payload, botName } : payload;
+  broadcastToUi('order.fill', enriched);
+}
+
 function sendReject(
   socket: WebSocket,
   payload: RejectPayload,
@@ -183,16 +321,12 @@ function sendHello(connection: BotConnection, config: RunConfig | null): void {
 }
 
 function sendDepthSnapshot(connection: BotConnection, symbol: string): void {
-  const mid = getLastPrice(symbol);
-  const bids: Array<[string, string]> = [
-    [(mid - 1000n).toString(), '2'],
-    [(mid - 500n).toString(), '1'],
-  ];
-  const asks: Array<[string, string]> = [
-    [(mid + 500n).toString(), '1'],
-    [(mid + 1000n).toString(), '2'],
-  ];
-  send(connection.socket, 'depth.snapshot', { symbol, bids, asks });
+  const payload = buildDepthPayload(symbol, getDepthSnapshot(symbol));
+  send(connection.socket, 'depth.snapshot', payload);
+  const tradePayload = buildTradePayload(symbol, getLastStreamTrade(symbol));
+  if (tradePayload) {
+    send(connection.socket, 'market.trade', tradePayload);
+  }
 }
 
 function sendBalanceUpdate(botName: string, balanceInt: string): void {
@@ -246,6 +380,7 @@ function computeFeeInt(
 
 function registerUi(socket: WebSocket): void {
   uiClients.add(socket);
+  sendInitialMarketData(socket);
   const interval = setInterval(() => {
     if (socket.readyState !== socket.OPEN) {
       return;
@@ -620,6 +755,7 @@ export function registerWsHandlers(server: FastifyInstance): void {
               sendDepthSnapshot(botConnection, instrument.symbol);
             }
           }
+          send(botConnection.socket, 'feed.health', getFeedHealth());
           const balance =
             getBot(botName)?.currentBalanceInt ?? botState.currentBalanceInt;
           sendBalanceUpdate(botName, balance);
