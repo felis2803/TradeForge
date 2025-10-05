@@ -1,5 +1,11 @@
 export * from './types.js';
 export { EngineImpl } from './engine.js';
+export { RealtimeOrderBook } from './realtime-orderbook.js';
+export {
+  createRealtimeEngine,
+  type RealtimeEngineAdapter,
+  type RealtimeEngineOptions,
+} from './realtime-engine.js';
 export { ConservativeGate } from './conservative-gate.js';
 export { LiquidityPlanner } from './liquidity-planner.js';
 export type { PlannedLevel, PlanResult } from './liquidity-planner.js';
