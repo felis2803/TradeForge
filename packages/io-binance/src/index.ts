@@ -146,3 +146,5 @@ export type {
   SourceTag,
 } from '@tradeforge/core';
 export type { CsvOptions } from './parse/csv.js';
+export { normalizeTrade } from './normalize/trades.js';
+export { normalizeDepth } from './normalize/depth.js';
