@@ -35,6 +35,29 @@ export interface RunStateSnapshot {
   startedAt: number | null;
   pausedAt: number | null;
   stoppedAt: number | null;
+  marketData: {
+    topOfBook: Record<string, TopOfBookEntry>;
+    lastTrades: Record<string, StreamTradeEntry>;
+    feed: FeedHealthState;
+  };
+}
+
+export interface TopOfBookEntry {
+  bestBidInt: IntString | null;
+  bestAskInt: IntString | null;
+  ts: number | null;
+}
+
+export interface StreamTradeEntry {
+  priceInt: IntString;
+  qtyInt: IntString;
+  side?: 'buy' | 'sell';
+  ts: number;
+}
+
+export interface FeedHealthState {
+  healthy: boolean;
+  lastUpdateTs: number | null;
 }
 
 export type IntString = string;

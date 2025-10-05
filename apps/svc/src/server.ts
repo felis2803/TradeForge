@@ -30,12 +30,19 @@ import {
   persistRunStatus,
 } from './persistence.js';
 import { registerWsHandlers } from './wsHandlers.js';
+import { RealtimeRunScheduler } from './realtime.js';
 import type {
   InstrumentConfig,
   RunConfig,
   RunMode,
   RunSpeed,
 } from './types.js';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    realtimeScheduler: RealtimeRunScheduler | null;
+  }
+}
 
 export interface ServiceContext {
   state: ExchangeState;
@@ -188,7 +195,10 @@ function normalizeRunConfig(body: unknown): RunConfig {
   };
 }
 
-function registerRunRoutes(server: FastifyInstance): void {
+function registerRunRoutes(
+  server: FastifyInstance,
+  services: ServiceContext,
+): void {
   server.get('/v1/health', async () => ({ status: 'ok' }));
 
   server.post('/v1/runs', async (request, reply) => {
@@ -196,6 +206,11 @@ function registerRunRoutes(server: FastifyInstance): void {
     if (!config.instruments.length) {
       reply.code(400);
       return { error: 'INSTRUMENTS_REQUIRED' };
+    }
+
+    if (server.realtimeScheduler) {
+      await server.realtimeScheduler.stop();
+      server.realtimeScheduler = null;
     }
 
     configureRun(config);
@@ -215,16 +230,41 @@ function registerRunRoutes(server: FastifyInstance): void {
     if (body.speed) {
       setRunSpeed(body.speed);
     }
-    setStatus('running');
-    server.log.info({ status: 'running' }, 'run transition');
+    if (server.realtimeScheduler) {
+      await server.realtimeScheduler.stop();
+      server.realtimeScheduler = null;
+    }
+    if (config.mode === 'realtime') {
+      const scheduler = new RealtimeRunScheduler({
+        config,
+        services,
+        logger: server.log,
+      });
+      server.realtimeScheduler = scheduler;
+      try {
+        await scheduler.start();
+      } catch (error) {
+        server.realtimeScheduler = null;
+        server.log.error({ error }, 'failed to start realtime scheduler');
+        throw error;
+      }
+    } else {
+      setStatus('running');
+    }
+    const snapshot = getSnapshot();
+    server.log.info({ status: snapshot.status }, 'run transition');
     await persistFullState();
-    return { status: 'running', run: getSnapshot() };
+    return { status: snapshot.status, run: snapshot };
   });
 
   server.post('/v1/runs/pause', async (request, reply) => {
     if (!getRunConfig()) {
       reply.code(400);
       return { error: 'RUN_NOT_CONFIGURED' };
+    }
+    if (server.realtimeScheduler) {
+      await server.realtimeScheduler.stop();
+      server.realtimeScheduler = null;
     }
     setStatus('paused');
     server.log.info({ status: 'paused' }, 'run transition');
@@ -236,6 +276,10 @@ function registerRunRoutes(server: FastifyInstance): void {
     if (!getRunConfig()) {
       reply.code(400);
       return { error: 'RUN_NOT_CONFIGURED' };
+    }
+    if (server.realtimeScheduler) {
+      await server.realtimeScheduler.stop();
+      server.realtimeScheduler = null;
     }
     setStatus('stopped');
     server.log.info({ status: 'stopped' }, 'run transition');
@@ -262,6 +306,7 @@ function registerRunRoutes(server: FastifyInstance): void {
 export function createServer(options?: { logger?: boolean }): FastifyInstance {
   const services = createServices();
   const server = Fastify({ logger: options?.logger ?? true });
+  server.decorate('realtimeScheduler', null as RealtimeRunScheduler | null);
 
   const allowedOriginsEnv = process.env.CORS_ORIGIN;
   const defaultOrigin =
@@ -301,9 +346,16 @@ export function createServer(options?: { logger?: boolean }): FastifyInstance {
     registerWsHandlers(instance);
   });
 
-  registerRunRoutes(server);
+  registerRunRoutes(server, services);
   registerAccountsRoutes(server, services);
   registerOrdersRoutes(server, services);
+
+  server.addHook('onClose', async () => {
+    if (server.realtimeScheduler) {
+      await server.realtimeScheduler.stop();
+      server.realtimeScheduler = null;
+    }
+  });
 
   return server;
 }
