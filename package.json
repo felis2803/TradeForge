@@ -61,6 +61,7 @@
     "@tradeforge/io-binance": "workspace:*",
     "@tradeforge/feed-binance": "workspace:*",
     "@tradeforge/loader-binance": "workspace:*",
+    "@tradeforge/sim": "workspace:*",
     "@tradeforge/validation": "workspace:*"
   }
 }

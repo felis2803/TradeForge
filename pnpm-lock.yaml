@@ -19,6 +19,9 @@ importers:
       '@tradeforge/loader-binance':
         specifier: workspace:*
         version: link:packages/loader-binance
+      '@tradeforge/sim':
+        specifier: workspace:*
+        version: link:packages/sim
       '@tradeforge/validation':
         specifier: workspace:*
         version: link:packages/validation
