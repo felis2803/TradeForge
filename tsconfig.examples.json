@@ -13,6 +13,8 @@
       "@tradeforge/io-binance/*": ["packages/io-binance/dist/*"],
       "@tradeforge/loader-binance": ["packages/loader-binance/dist/index.d.ts"],
       "@tradeforge/loader-binance/*": ["packages/loader-binance/dist/*"],
+      "@tradeforge/sim": ["packages/sim/dist/index.d.ts"],
+      "@tradeforge/sim/*": ["packages/sim/dist/*"],
       "@tradeforge/validation": ["packages/validation/dist/index.d.ts"],
       "@tradeforge/validation/*": ["packages/validation/dist/*"],
       "examples/*": ["examples/*"]

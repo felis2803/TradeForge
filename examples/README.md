@@ -45,6 +45,7 @@ pnpm examples:run 01-basic-replay
 | `06-resume-from-checkpoint` | TODO   | Восстановление состояния из чекпоинта.                       |
 | `07-summary-and-ndjson`     | TODO   | Выгрузка итогов и поток NDJSON.                              |
 | `08-rest-mini`              | TODO   | Минимальный REST-сценарий поверх SDK.                        |
+| `10-realtime-market-bot`    | ✅     | Простейший realtime-бот с рыночными сделками.                |
 
 ## Дальнейшие шаги
 

@@ -10,12 +10,18 @@ importers:
       '@tradeforge/core':
         specifier: workspace:*
         version: link:packages/core
+      '@tradeforge/feed-binance':
+        specifier: workspace:*
+        version: link:packages/feed-binance
       '@tradeforge/io-binance':
         specifier: workspace:*
         version: link:packages/io-binance
       '@tradeforge/loader-binance':
         specifier: workspace:*
         version: link:packages/loader-binance
+      '@tradeforge/sim':
+        specifier: workspace:*
+        version: link:packages/sim
       '@tradeforge/validation':
         specifier: workspace:*
         version: link:packages/validation
@@ -175,6 +181,21 @@ importers:
       '@tradeforge/validation':
         specifier: workspace:*
         version: link:../validation
+
+  packages/feed-binance:
+    dependencies:
+      '@tradeforge/core':
+        specifier: workspace:^
+        version: link:../core
+      '@tradeforge/io-binance':
+        specifier: workspace:^
+        version: link:../io-binance
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      ws:
+        specifier: ^8.16.0
+        version: 8.18.3
 
   packages/io-binance:
     dependencies:

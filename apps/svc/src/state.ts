@@ -10,6 +10,9 @@ import {
   RunLifecycleStatus,
   RunSpeed,
   RunStateSnapshot,
+  FeedHealthState,
+  StreamTradeEntry,
+  TopOfBookEntry,
   TradeRecord,
 } from './types.js';
 
@@ -26,6 +29,21 @@ interface StateData {
   trades: TradeRecord[];
   orderSeq: number;
   lastPrices: Map<string, bigint>;
+  market: MarketState;
+}
+
+interface DepthSnapshotState {
+  bids: Array<[IntString, IntString]>;
+  asks: Array<[IntString, IntString]>;
+  ts: number | null;
+  seq?: number | null;
+}
+
+interface MarketState {
+  depth: Map<string, DepthSnapshotState>;
+  topOfBook: Map<string, TopOfBookEntry>;
+  lastTrades: Map<string, StreamTradeEntry>;
+  feed: FeedHealthState;
 }
 
 const DEFAULT_PRICE_INT = 100_000n;
@@ -65,6 +83,12 @@ const initialState: StateData = {
   trades: [],
   orderSeq: 0,
   lastPrices: new Map(),
+  market: {
+    depth: new Map(),
+    topOfBook: new Map(),
+    lastTrades: new Map(),
+    feed: { healthy: false, lastUpdateTs: null },
+  },
 };
 
 let state: StateData = { ...initialState };
@@ -76,6 +100,12 @@ export function resetState(): void {
     orders: new Map(),
     trades: [],
     lastPrices: new Map(),
+    market: {
+      depth: new Map(),
+      topOfBook: new Map(),
+      lastTrades: new Map(),
+      feed: { healthy: false, lastUpdateTs: null },
+    },
   };
 }
 
@@ -95,6 +125,20 @@ export function configureRun(config: RunConfig): void {
       DEFAULT_PRICE_INT,
     ]),
   );
+  state.market.depth = new Map(
+    config.instruments.map((instrument) => [
+      instrument.symbol,
+      { bids: [], asks: [], ts: null } satisfies DepthSnapshotState,
+    ]),
+  );
+  state.market.topOfBook = new Map(
+    config.instruments.map((instrument) => [
+      instrument.symbol,
+      { bestBidInt: null, bestAskInt: null, ts: null },
+    ]),
+  );
+  state.market.lastTrades = new Map();
+  state.market.feed = { healthy: false, lastUpdateTs: null };
 }
 
 export function setStatus(status: RunLifecycleStatus): void {
@@ -110,6 +154,11 @@ export function setStatus(status: RunLifecycleStatus): void {
       break;
     case 'stopped':
       state.stoppedAt = now;
+      state.lastPrices = new Map();
+      state.market.depth = new Map();
+      state.market.topOfBook = new Map();
+      state.market.lastTrades = new Map();
+      state.market.feed = { healthy: false, lastUpdateTs: null };
       break;
     default:
       break;
@@ -123,7 +172,130 @@ export function setRunSpeed(speed: RunSpeed): void {
   state.config = { ...state.config, speed };
 }
 
+function cloneTopOfBookEntry(entry: TopOfBookEntry): TopOfBookEntry {
+  return {
+    bestBidInt: entry.bestBidInt,
+    bestAskInt: entry.bestAskInt,
+    ts: entry.ts,
+  };
+}
+
+function touchFeedUpdate(ts?: number): void {
+  state.market.feed.lastUpdateTs = ts ?? Date.now();
+}
+
+export function updateDepthFromFeed(
+  symbol: string,
+  snapshot: {
+    bids: Array<[IntString, IntString]>;
+    asks: Array<[IntString, IntString]>;
+    ts?: number | null;
+    seq?: number | null;
+  },
+): void {
+  const bids = snapshot.bids.map(
+    ([price, qty]) =>
+      [toIntStringStrict(price), toIntStringStrict(qty)] as [
+        IntString,
+        IntString,
+      ],
+  );
+  const asks = snapshot.asks.map(
+    ([price, qty]) =>
+      [toIntStringStrict(price), toIntStringStrict(qty)] as [
+        IntString,
+        IntString,
+      ],
+  );
+  const record: DepthSnapshotState = {
+    bids,
+    asks,
+    ts: snapshot.ts ?? null,
+    ...(snapshot.seq !== undefined ? { seq: snapshot.seq } : {}),
+  };
+  state.market.depth.set(symbol, record);
+
+  const topEntry: TopOfBookEntry = {
+    bestBidInt: bids.length ? bids[0][0] : null,
+    bestAskInt: asks.length ? asks[0][0] : null,
+    ts: record.ts,
+  };
+  state.market.topOfBook.set(symbol, topEntry);
+  touchFeedUpdate(record.ts ?? undefined);
+}
+
+export function getDepthSnapshot(
+  symbol: string,
+): DepthSnapshotState | undefined {
+  const snapshot = state.market.depth.get(symbol);
+  if (!snapshot) {
+    return undefined;
+  }
+  return {
+    bids: snapshot.bids.map(([price, qty]) => [price, qty]),
+    asks: snapshot.asks.map(([price, qty]) => [price, qty]),
+    ts: snapshot.ts,
+    seq: snapshot.seq,
+  };
+}
+
+export function recordStreamTrade(
+  symbol: string,
+  trade: StreamTradeEntry,
+): void {
+  const payload: StreamTradeEntry = {
+    priceInt: toIntStringStrict(trade.priceInt),
+    qtyInt: toIntStringStrict(trade.qtyInt),
+    side: trade.side,
+    ts: trade.ts,
+  };
+  state.market.lastTrades.set(symbol, payload);
+  try {
+    state.lastPrices.set(symbol, BigInt(payload.priceInt));
+  } catch {
+    // ignore bigint coercion errors
+  }
+  touchFeedUpdate(trade.ts);
+}
+
+export function getLastStreamTrade(
+  symbol: string,
+): StreamTradeEntry | undefined {
+  const trade = state.market.lastTrades.get(symbol);
+  if (!trade) {
+    return undefined;
+  }
+  return { ...trade };
+}
+
+export function setFeedHealthy(healthy: boolean): void {
+  state.market.feed.healthy = healthy;
+}
+
+export function getFeedHealth(): FeedHealthState {
+  return { ...state.market.feed };
+}
+
 export function getSnapshot(): RunStateSnapshot {
+  const topOfBook: Record<string, TopOfBookEntry> = {};
+  if (state.config) {
+    for (const instrument of state.config.instruments) {
+      const entry =
+        state.market.topOfBook.get(instrument.symbol) ??
+        ({ bestBidInt: null, bestAskInt: null, ts: null } as TopOfBookEntry);
+      topOfBook[instrument.symbol] = cloneTopOfBookEntry(entry);
+    }
+  } else {
+    for (const [symbol, entry] of state.market.topOfBook.entries()) {
+      topOfBook[symbol] = cloneTopOfBookEntry(entry);
+    }
+  }
+
+  const lastTrades: Record<string, StreamTradeEntry> = {};
+  for (const [symbol, trade] of state.market.lastTrades.entries()) {
+    lastTrades[symbol] = { ...trade };
+  }
+
   return {
     status: state.status,
     config: state.config,
@@ -131,6 +303,11 @@ export function getSnapshot(): RunStateSnapshot {
     startedAt: state.startedAt,
     pausedAt: state.pausedAt,
     stoppedAt: state.stoppedAt,
+    marketData: {
+      topOfBook,
+      lastTrades,
+      feed: { ...state.market.feed },
+    },
   };
 }
 

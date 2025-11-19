@@ -1,0 +1,30 @@
+{
+  "name": "@tradeforge/feed-binance",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --dts --format esm --out-dir dist",
+    "clean": "rimraf dist",
+    "format": "prettier -w .",
+    "lint": "eslint . --ext .ts",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --config ../../jest.config.mjs --testPathPattern packages/feed-binance/tests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@tradeforge/core": "workspace:^",
+    "@tradeforge/io-binance": "workspace:^",
+    "@types/ws": "^8.18.1",
+    "ws": "^8.16.0"
+  }
+}
