@@ -98,6 +98,15 @@ export class OrderStore {
     this.pendingBySide[order.side].delete(order.id);
   }
 
+  delete(orderId: string): boolean {
+    const order = this.orders.get(orderId);
+    if (!order) {
+      return false;
+    }
+    this.pendingBySide[order.side].delete(orderId);
+    return this.orders.delete(orderId);
+  }
+
   applyFill(order: InternalOrder, fill: { qty: bigint; ts: number }): void {
     order.remainingQty -= fill.qty;
     order.filledQty += fill.qty;

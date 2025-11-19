@@ -167,8 +167,11 @@ export class EngineImpl implements Engine {
         }
         this.queue.push(factory(value));
       }
-    })().catch(() => {
-      // swallow stream errors to maintain deterministic flow; they can be surfaced via external hooks
+    })().catch((err) => {
+      this.eventBus.emit(
+        'error',
+        err instanceof Error ? err : new Error(String(err)),
+      );
     });
     this.streamTasks.push(task);
   }
@@ -243,6 +246,7 @@ export class EngineImpl implements Engine {
     const view = this.orderStore.cancel(order, now);
     this.openMarketOrders.delete(orderId);
     this.eventBus.emit('orderCanceled', view);
+    this.orderStore.delete(orderId);
   }
 
   private validate(order: SubmitOrder): string | null {
@@ -394,6 +398,9 @@ export class EngineImpl implements Engine {
   private applyFill(order: InternalOrder, fill: FillEvent): void {
     this.orderStore.applyFill(order, { qty: fill.qty, ts: fill.ts });
     this.eventBus.emit('orderFilled', fill);
+    if (order.status === 'FILLED') {
+      this.orderStore.delete(order.id);
+    }
   }
 
   private rejectExistingOrder(
@@ -419,6 +426,7 @@ export class EngineImpl implements Engine {
       event.message = message;
     }
     this.eventBus.emit('orderRejected', event);
+    this.orderStore.delete(order.id);
   }
 
   private matchOpenMarkets(now: number): void {

@@ -91,6 +91,7 @@ export interface EngineEvents {
   orderCanceled(order: OrderView): void;
   orderRejected(event: RejectEvent): void;
   tradeSeen(trade: Trade): void;
+  error(err: Error): void;
 }
 
 export interface Engine {
