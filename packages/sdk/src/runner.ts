@@ -14,6 +14,16 @@ import {
   type Trade as SimTrade,
   type DepthDiff as SimDepthDiff,
 } from '@tradeforge/sim';
+import {
+  createDashboardServer,
+  type DashboardConfig,
+  type DashboardServer,
+  serializeTrade,
+  serializeOrder,
+  serializeFill,
+  serializeBalance,
+  serializeLiquidation,
+} from './dashboard.js';
 
 export interface LiquidationEvent {
   reason: string;
@@ -48,6 +58,7 @@ export interface BotConfig {
   initialBasePosition?: bigint;
   initialQuoteBalance?: bigint;
   liquidationMarginRatio?: number; // Default: 0.1 (10%)
+  dashboard?: DashboardConfig; // Optional dashboard configuration
 }
 
 function wrapStream<T>(
@@ -93,6 +104,21 @@ function isAsyncIterable<T>(input: unknown): input is AsyncIterable<T> {
 }
 
 export async function runBot(config: BotConfig): Promise<void> {
+  // Initialize dashboard if enabled
+  let dashboardServer: DashboardServer | null = null;
+  const activeOrders = new Map<string, OrderView>();
+
+  if (config.dashboard?.enabled) {
+    dashboardServer = createDashboardServer(config.dashboard);
+    dashboardServer.updateState({
+      symbol: config.symbol,
+      balance: config.initialQuoteBalance ?? 0n,
+      position: config.initialBasePosition ?? 0n,
+      unrealizedPnL: 0n,
+      orders: activeOrders,
+    });
+  }
+
   let tradesSource: AsyncIterable<Trade>;
 
   if (isAsyncIterable(config.trades)) {
@@ -241,6 +267,12 @@ export async function runBot(config: BotConfig): Promise<void> {
 
     config.onLiquidation?.(liquidationEvent);
 
+    // Broadcast to dashboard
+    dashboardServer?.broadcast(
+      'liquidation',
+      serializeLiquidation(liquidationEvent),
+    );
+
     // Close position with market order
     const closeSide = position > 0n ? 'SELL' : 'BUY';
     const closeQty = position > 0n ? position : -position;
@@ -345,6 +377,10 @@ export async function runBot(config: BotConfig): Promise<void> {
     lastPrice = trade.price;
     // Inject symbol to match Trade interface from io-binance
     const fullTrade = { ...trade, symbol: config.symbol } as unknown as Trade;
+
+    // Broadcast to dashboard
+    dashboardServer?.broadcast('trade', serializeTrade(fullTrade));
+
     config.onTrade?.(fullTrade, ctx);
 
     // Check for liquidation after price update
@@ -354,6 +390,17 @@ export async function runBot(config: BotConfig): Promise<void> {
   });
 
   engine.on('orderUpdated', (order: OrderView) => {
+    // Track active orders for dashboard
+    if (order.status === 'FILLED' || order.status === 'CANCELED') {
+      activeOrders.delete(order.id);
+    } else {
+      activeOrders.set(order.id, order);
+    }
+
+    // Broadcast to dashboard
+    dashboardServer?.broadcast('orderUpdate', serializeOrder(order));
+    dashboardServer?.updateState({ orders: activeOrders });
+
     config.onOrderUpdate?.(order);
   });
 
@@ -373,6 +420,15 @@ export async function runBot(config: BotConfig): Promise<void> {
       isLiquidating = false;
     }
 
+    // Broadcast to dashboard
+    dashboardServer?.broadcast('fill', serializeFill(fill));
+    dashboardServer?.broadcast('balance', serializeBalance(ctx));
+    dashboardServer?.updateState({
+      balance,
+      position,
+      unrealizedPnL: calculateUnrealizedPnL(),
+    });
+
     config.onOrderFill?.(fill, ctx);
   });
 
@@ -390,4 +446,9 @@ export async function runBot(config: BotConfig): Promise<void> {
 
   await finished;
   await engine.close();
+
+  // Close dashboard server if it was started
+  if (dashboardServer) {
+    await dashboardServer.close();
+  }
 }

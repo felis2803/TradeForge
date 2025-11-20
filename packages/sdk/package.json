@@ -8,7 +8,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --dts --format esm --out-dir dist",
+    "build": "tsup src/index.ts --dts --format esm --out-dir dist && node -e \"require('fs').cpSync('src/dashboard.html', 'dist/dashboard.html')\"",
     "clean": "rimraf dist",
     "format": "prettier -w .",
     "lint": "eslint . --ext .ts",
@@ -18,9 +18,11 @@
   "dependencies": {
     "@tradeforge/core": "workspace:*",
     "@tradeforge/io-binance": "workspace:*",
-    "@tradeforge/sim": "workspace:*"
+    "@tradeforge/sim": "workspace:*",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
-    "tsup": "^8.0.0"
+    "tsup": "^8.0.0",
+    "@types/ws": "^8.5.10"
   }
 }

@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradeForge Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0e27;
+            --bg-secondary: #151932;
+            --bg-card: rgba(30, 35, 62, 0.6);
+            --border-color: rgba(138, 180, 248, 0.1);
+            --text-primary: #e4e9f7;
+            --text-secondary: #8a9dc9;
+            --accent-blue: #4c9aff;
+            --accent-purple: #7c3aed;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1f3a 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            animation: fadeInDown 0.6s ease;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 2rem;
+            backdrop-filter: blur(10px);
+            font-size: 0.875rem;
+            margin-top: 1rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-red);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: var(--accent-green);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            animation: fadeIn 0.6s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .positive {
+            color: var(--accent-green);
+        }
+
+        .negative {
+            color: var(--accent-red);
+        }
+
+        .neutral {
+            color: var(--text-primary);
+        }
+
+        .wide-card {
+            grid-column: 1 / -1;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            text-align: left;
+            padding: 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+        }
+
+        td {
+            padding: 0.75rem;
+            font-size: 0.875rem;
+            border-bottom: 1px solid rgba(138, 180, 248, 0.05);
+        }
+
+        tbody tr {
+            transition: background-color 0.2s ease;
+        }
+
+        tbody tr:hover {
+            background-color: rgba(76, 154, 255, 0.05);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge-buy {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+        }
+
+        .badge-sell {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+
+        .badge-limit {
+            background: rgba(76, 154, 255, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .badge-market {
+            background: rgba(124, 58, 237, 0.2);
+            color: var(--accent-purple);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+
+        .feed-item {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(138, 180, 248, 0.05);
+            transition: background-color 0.2s ease;
+            animation: slideIn 0.3s ease;
+        }
+
+        .feed-item:hover {
+            background-color: rgba(76, 154, 255, 0.05);
+        }
+
+        .feed-item:last-child {
+            border-bottom: none;
+        }
+
+        .feed-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .feed-time {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .feed-content {
+            font-size: 0.875rem;
+        }
+
+        .scroll-container {
+            max-height: 400px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--accent-blue) var(--bg-secondary);
+        }
+
+        .scroll-container::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scroll-container::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+            border-radius: 3px;
+        }
+
+        .scroll-container::-webkit-scrollbar-thumb {
+            background: var(--accent-blue);
+            border-radius: 3px;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .symbol-tag {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 TradeForge Dashboard</h1>
+            <div class="status-badge">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="connectionStatus">Connecting...</span>
+            </div>
+        </header>
+
+        <div class="grid">
+            <!-- Bot Info -->
+            <div class="card">
+                <div class="card-title">Bot Information</div>
+                <div class="stat-value"><span class="symbol-tag" id="symbolDisplay">-</span></div>
+                <div class="stat-label">Trading Symbol</div>
+            </div>
+
+            <!-- Balance -->
+            <div class="card">
+                <div class="card-title">Quote Balance</div>
+                <div class="stat-value neutral" id="balanceDisplay">0.00</div>
+                <div class="stat-label">USDT</div>
+            </div>
+
+            <!-- Position -->
+            <div class="card">
+                <div class="card-title">Position</div>
+                <div class="stat-value neutral" id="positionDisplay">0.00000</div>
+                <div class="stat-label">BTC</div>
+            </div>
+
+            <!-- Unrealized P/L -->
+            <div class="card">
+                <div class="card-title">Unrealized P/L</div>
+                <div class="stat-value neutral" id="pnlDisplay">0.00</div>
+                <div class="stat-label">USDT</div>
+            </div>
+
+            <!-- Active Orders -->
+            <div class="card wide-card">
+                <div class="card-title">Active Orders</div>
+                <div class="scroll-container">
+                    <table id="ordersTable">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Type</th>
+                                <th>Side</th>
+                                <th>Price</th>
+                                <th>Quantity</th>
+                                <th>Filled</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordersBody">
+                            <tr>
+                                <td colspan="7" class="empty-state">No active orders</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Recent Trades -->
+            <div class="card wide-card">
+                <div class="card-title">Recent Market Trades</div>
+                <div class="scroll-container" id="tradesFeed">
+                    <div class="empty-state">Waiting for trades...</div>
+                </div>
+            </div>
+
+            <!-- Order Fills -->
+            <div class="card wide-card">
+                <div class="card-title">Order Fills</div>
+                <div class="scroll-container" id="fillsFeed">
+                    <div class="empty-state">No fills yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectTimeout = null;
+        const MAX_FEED_ITEMS = 50;
+
+        const state = {
+            symbol: '',
+            balance: 0n,
+            position: 0n,
+            unrealizedPnL: 0n,
+            orders: new Map(),
+            trades: [],
+            fills: []
+        };
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                updateConnectionStatus(true);
+                if (reconnectTimeout) {
+                    clearTimeout(reconnectTimeout);
+                    reconnectTimeout = null;
+                }
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleMessage(message);
+                } catch (err) {
+                    console.error('Failed to parse message:', err);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                updateConnectionStatus(false);
+                // Reconnect after 2 seconds
+                reconnectTimeout = setTimeout(connectWebSocket, 2000);
+            };
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('connectionStatus');
+            
+            if (connected) {
+                statusDot.classList.add('connected');
+                statusText.textContent = 'Connected';
+            } else {
+                statusDot.classList.remove('connected');
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case 'init':
+                    state.symbol = msg.data.symbol;
+                    state.balance = BigInt(msg.data.balance);
+                    state.position = BigInt(msg.data.position);
+                    state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
+                    if (msg.data.orders) {
+                        msg.data.orders.forEach(order => {
+                            state.orders.set(order.id, order);
+                        });
+                    }
+                    updateUI();
+                    break;
+                
+                case 'trade':
+                    state.trades.unshift(msg.data);
+                    if (state.trades.length > MAX_FEED_ITEMS) {
+                        state.trades.pop();
+                    }
+                    updateTradesFeed();
+                    break;
+                
+                case 'orderUpdate':
+                    const order = msg.data;
+                    if (order.status === 'FILLED' || order.status === 'CANCELED') {
+                        state.orders.delete(order.id);
+                    } else {
+                        state.orders.set(order.id, order);
+                    }
+                    updateOrdersTable();
+                    break;
+                
+                case 'fill':
+                    state.fills.unshift(msg.data);
+                    if (state.fills.length > MAX_FEED_ITEMS) {
+                        state.fills.pop();
+                    }
+                    updateFillsFeed();
+                    break;
+                
+                case 'balance':
+                    state.balance = BigInt(msg.data.balance);
+                    state.position = BigInt(msg.data.position);
+                    state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
+                    updateBalanceDisplay();
+                    break;
+                
+                case 'liquidation':
+                    handleLiquidation(msg.data);
+                    break;
+            }
+        }
+
+        function formatQuote(amount) {
+            // Quote is scale 10 (5 + 5), display 2 decimal places
+            const divisor = 100000000n; // 1e8
+            const val = amount / divisor;
+            const integer = val / 100n;
+            const fraction = val % 100n;
+            const absFraction = fraction < 0n ? -fraction : fraction;
+            return `${integer}.${absFraction.toString().padStart(2, '0')}`;
+        }
+
+        function formatBase(amount) {
+            // Base is scale 5, display 5 decimal places
+            const divisor = 100000n; // 1e5
+            const val = amount / divisor;
+            const integer = val / 100000n;
+            const fraction = val % 100000n;
+            const absFraction = fraction < 0n ? -fraction : fraction;
+            const sign = amount < 0n ? '-' : '';
+            return `${sign}${integer}.${absFraction.toString().padStart(5, '0')}`;
+        }
+
+        function formatPrice(price) {
+            // Price scale 5, display 2 decimal places
+            const divisor = 100000n; // 1e5
+            const val = price / divisor;
+            const integer = val / 100n;
+            const fraction = val % 100n;
+            return `${integer}.${fraction.toString().padStart(2, '0')}`;
+        }
+
+        function formatTime(ts) {
+            return new Date(ts).toLocaleTimeString();
+        }
+
+        function updateUI() {
+            document.getElementById('symbolDisplay').textContent = state.symbol || '-';
+            updateBalanceDisplay();
+            updateOrdersTable();
+        }
+
+        function updateBalanceDisplay() {
+            const balanceEl = document.getElementById('balanceDisplay');
+            const positionEl = document.getElementById('positionDisplay');
+            const pnlEl = document.getElementById('pnlDisplay');
+
+            balanceEl.textContent = formatQuote(state.balance);
+            positionEl.textContent = formatBase(state.position);
+            pnlEl.textContent = formatQuote(state.unrealizedPnL);
+
+            // Update colors
+            if (state.unrealizedPnL > 0n) {
+                pnlEl.className = 'stat-value positive';
+            } else if (state.unrealizedPnL < 0n) {
+                pnlEl.className = 'stat-value negative';
+            } else {
+                pnlEl.className = 'stat-value neutral';
+            }
+
+            if (state.position > 0n) {
+                positionEl.className = 'stat-value positive';
+            } else if (state.position < 0n) {
+                positionEl.className = 'stat-value negative';
+            } else {
+                positionEl.className = 'stat-value neutral';
+            }
+        }
+
+        function updateOrdersTable() {
+            const tbody = document.getElementById('ordersBody');
+            
+            if (state.orders.size === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No active orders</td></tr>';
+                return;
+            }
+
+            const rows = Array.from(state.orders.values()).map(order => `
+                <tr>
+                    <td>${order.id.substring(0, 8)}</td>
+                    <td><span class="badge badge-${order.type.toLowerCase()}">${order.type}</span></td>
+                    <td><span class="badge badge-${order.side.toLowerCase()}">${order.side}</span></td>
+                    <td>${order.price ? formatPrice(BigInt(order.price)) : 'MARKET'}</td>
+                    <td>${formatBase(BigInt(order.qty))}</td>
+                    <td>${formatBase(BigInt(order.filledQty || 0))}</td>
+                    <td>${order.status}</td>
+                </tr>
+            `).join('');
+
+            tbody.innerHTML = rows;
+        }
+
+        function updateTradesFeed() {
+            const feed = document.getElementById('tradesFeed');
+            
+            if (state.trades.length === 0) {
+                feed.innerHTML = '<div class="empty-state">Waiting for trades...</div>';
+                return;
+            }
+
+            const items = state.trades.map(trade => `
+                <div class="feed-item">
+                    <div class="feed-header">
+                        <span class="badge badge-${trade.side.toLowerCase()}">${trade.side}</span>
+                        <span class="feed-time">${formatTime(trade.ts)}</span>
+                    </div>
+                    <div class="feed-content">
+                        ${formatPrice(BigInt(trade.price))} USDT × ${formatBase(BigInt(trade.qty))} BTC
+                    </div>
+                </div>
+            `).join('');
+
+            feed.innerHTML = items;
+        }
+
+        function updateFillsFeed() {
+            const feed = document.getElementById('fillsFeed');
+            
+            if (state.fills.length === 0) {
+                feed.innerHTML = '<div class="empty-state">No fills yet</div>';
+                return;
+            }
+
+            const items = state.fills.map(fill => `
+                <div class="feed-item">
+                    <div class="feed-header">
+                        <span class="badge badge-${fill.side.toLowerCase()}">${fill.side}</span>
+                        <span class="feed-time">${formatTime(fill.ts)}</span>
+                    </div>
+                    <div class="feed-content">
+                        Filled ${formatBase(BigInt(fill.qty))} BTC @ ${formatPrice(BigInt(fill.price))} USDT
+                        <br>
+                        <small style="color: var(--text-secondary);">Order: ${fill.orderId.substring(0, 8)}</small>
+                    </div>
+                </div>
+            `).join('');
+
+            feed.innerHTML = items;
+        }
+
+        function handleLiquidation(data) {
+            // Add a special alert for liquidation
+            const feed = document.getElementById('fillsFeed');
+            const alertItem = document.createElement('div');
+            alertItem.className = 'feed-item';
+            alertItem.style.background = 'rgba(239, 68, 68, 0.1)';
+            alertItem.style.border = '1px solid var(--accent-red)';
+            alertItem.innerHTML = `
+                <div class="feed-header">
+                    <span style="color: var(--accent-red); font-weight: 700;">🚨 LIQUIDATION</span>
+                    <span class="feed-time">${formatTime(data.ts)}</span>
+                </div>
+                <div class="feed-content">
+                    ${data.reason}
+                </div>
+            `;
+            feed.insertBefore(alertItem, feed.firstChild);
+        }
+
+        // Initialize
+        connectWebSocket();
+    </script>
+</body>
+</html>
