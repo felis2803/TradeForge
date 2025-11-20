@@ -22,8 +22,8 @@ export interface BotContext {
 
 export interface BotConfig {
   symbol: string;
-  trades: string | string[];
-  depth?: string | string[];
+  trades: string | string[] | AsyncIterable<Trade>;
+  depth?: string | string[] | AsyncIterable<DepthDiff>;
   onTrade?: (trade: Trade, ctx: BotContext) => void;
   onDepth?: (diff: DepthDiff, ctx: BotContext) => void;
   onOrderUpdate?: (order: OrderView) => void;
@@ -69,33 +69,48 @@ function adaptDepthStream(
   };
 }
 
+function isAsyncIterable<T>(input: unknown): input is AsyncIterable<T> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return !!input && typeof (input as any)[Symbol.asyncIterator] === 'function';
+}
+
 export async function runBot(config: BotConfig): Promise<void> {
-  const tradesFiles = Array.isArray(config.trades)
-    ? config.trades
-    : [config.trades];
-  const depthFiles = config.depth
-    ? Array.isArray(config.depth)
-      ? config.depth
-      : [config.depth]
-    : [];
+  let tradesSource: AsyncIterable<Trade>;
 
-  const tradesSource = createJsonlCursorReader({
-    kind: 'trades',
-    files: tradesFiles.map((f) => resolve(f)),
-  });
+  if (isAsyncIterable(config.trades)) {
+    tradesSource = config.trades;
+  } else {
+    const tradesFiles = Array.isArray(config.trades)
+      ? config.trades
+      : [config.trades];
+    tradesSource = createJsonlCursorReader({
+      kind: 'trades',
+      files: tradesFiles.map((f) => resolve(f)),
+    }) as AsyncIterable<Trade>;
+  }
 
-  // Force cast to AsyncIterable to avoid TS mismatch with CursorIterable
-  const tradesSourceIter = tradesSource as AsyncIterable<Trade>;
+  let depthSource: AsyncIterable<DepthDiff>;
 
-  const depthSource =
-    depthFiles.length > 0
-      ? createJsonlCursorReader({
-          kind: 'depth',
-          files: depthFiles.map((f) => resolve(f)),
-        })
-      : (async function* () {})();
+  if (config.depth && isAsyncIterable(config.depth)) {
+    depthSource = config.depth;
+  } else {
+    const depthFiles = config.depth
+      ? Array.isArray(config.depth)
+        ? config.depth
+        : [config.depth]
+      : [];
 
-  const depthSourceIter = depthSource as AsyncIterable<DepthDiff>;
+    depthSource =
+      depthFiles.length > 0
+        ? (createJsonlCursorReader({
+            kind: 'depth',
+            files: depthFiles.map((f) => resolve(f)),
+          }) as AsyncIterable<DepthDiff>)
+        : (async function* () {})();
+  }
+
+  const tradesSourceIter = tradesSource;
+  const depthSourceIter = depthSource;
 
   let activeStreams = 0;
   let resolveFinished: () => void;
@@ -114,7 +129,17 @@ export async function runBot(config: BotConfig): Promise<void> {
   const tradesStream = wrapStream(tradesSourceIter, checkDone);
 
   let depthStream = depthSourceIter;
-  if (depthFiles.length > 0) {
+  // Check if depth source is effectively empty (the empty generator we created)
+  // This check is a bit loose but sufficient for now.
+  // If it's an array of files and empty, we know it's empty.
+  // If it's an iterable, we assume it might have data.
+  const hasDepth =
+    config.depth &&
+    (isAsyncIterable(config.depth) ||
+      (Array.isArray(config.depth) && config.depth.length > 0) ||
+      typeof config.depth === 'string');
+
+  if (hasDepth) {
     activeStreams++; // depth
     depthStream = wrapStream(depthSourceIter, checkDone);
   }
