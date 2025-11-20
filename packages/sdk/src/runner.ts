@@ -18,6 +18,9 @@ import {
 export interface BotContext {
   placeOrder(order: Omit<SubmitOrder, 'ts'>): string;
   cancelOrder(orderId: string): boolean;
+  readonly position: bigint;
+  readonly balance: bigint;
+  readonly unrealizedPnL: bigint;
 }
 
 export interface BotConfig {
@@ -27,9 +30,11 @@ export interface BotConfig {
   onTrade?: (trade: Trade, ctx: BotContext) => void;
   onDepth?: (diff: DepthDiff, ctx: BotContext) => void;
   onOrderUpdate?: (order: OrderView) => void;
-  onOrderFill?: (fill: FillEvent) => void;
+  onOrderFill?: (fill: FillEvent, ctx: BotContext) => void;
   onOrderReject?: (event: RejectEvent) => void;
   onError?: (err: Error) => void;
+  initialBasePosition?: bigint;
+  initialQuoteBalance?: bigint;
 }
 
 function wrapStream<T>(
@@ -153,6 +158,11 @@ export async function runBot(config: BotConfig): Promise<void> {
   } | null = null;
   let currentTs = 0n;
 
+  let position = config.initialBasePosition ?? 0n;
+  let balance = config.initialQuoteBalance ?? 0n;
+  let totalCost = 0n; // Cost basis for P/L calculation
+  let lastPrice = 0n; // Last seen price from trades
+
   const ctx: BotContext = {
     placeOrder: (order) => {
       if (!engineRef) throw new Error('Engine not initialized');
@@ -162,6 +172,19 @@ export async function runBot(config: BotConfig): Promise<void> {
     cancelOrder: (orderId) => {
       if (!engineRef) throw new Error('Engine not initialized');
       return engineRef.cancelOrder(orderId);
+    },
+    get position() {
+      return position;
+    },
+    get balance() {
+      return balance;
+    },
+    get unrealizedPnL() {
+      // Unrealized P/L = current market value - cost basis
+      // Market value = position * lastPrice
+      // Cost basis = totalCost
+      if (lastPrice === 0n) return 0n;
+      return position * lastPrice - totalCost;
     },
   };
 
@@ -212,6 +235,8 @@ export async function runBot(config: BotConfig): Promise<void> {
   };
 
   engine.on('tradeSeen', (trade: SimTrade) => {
+    // Update last price for P/L calculation
+    lastPrice = trade.price;
     // Inject symbol to match Trade interface from io-binance
     const fullTrade = { ...trade, symbol: config.symbol } as unknown as Trade;
     config.onTrade?.(fullTrade, ctx);
@@ -222,7 +247,16 @@ export async function runBot(config: BotConfig): Promise<void> {
   });
 
   engine.on('orderFilled', (fill: FillEvent) => {
-    config.onOrderFill?.(fill);
+    if (fill.side === 'BUY') {
+      position += fill.qty;
+      balance -= fill.price * fill.qty;
+      totalCost += fill.price * fill.qty;
+    } else {
+      position -= fill.qty;
+      balance += fill.price * fill.qty;
+      totalCost -= fill.price * fill.qty;
+    }
+    config.onOrderFill?.(fill, ctx);
   });
 
   engine.on('orderRejected', (event: RejectEvent) => {
