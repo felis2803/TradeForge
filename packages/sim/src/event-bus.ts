@@ -12,6 +12,7 @@ export class EngineEventBus {
     orderCanceled: new Set(),
     orderRejected: new Set(),
     tradeSeen: new Set(),
+    error: new Set(),
   };
 
   on<E extends keyof EngineEvents>(event: E, cb: EngineEvents[E]): () => void {

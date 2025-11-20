@@ -41,7 +41,7 @@ async function* lineSplitter(stream: Readable): AsyncIterable<string> {
 async function expand(files: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const file of files) {
-    if (/[\\*\?]/.test(file)) {
+    if (/[*?]/.test(file)) {
       const found = await fg(file, { dot: false });
       out.push(...found);
     } else {

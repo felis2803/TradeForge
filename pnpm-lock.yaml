@@ -19,6 +19,9 @@ importers:
       '@tradeforge/loader-binance':
         specifier: workspace:*
         version: link:packages/loader-binance
+      '@tradeforge/sdk':
+        specifier: workspace:*
+        version: link:packages/sdk
       '@tradeforge/sim':
         specifier: workspace:*
         version: link:packages/sim
@@ -240,6 +243,22 @@ importers:
       typescript:
         specifier: ^5.4.0
         version: 5.9.2
+
+  packages/sdk:
+    dependencies:
+      '@tradeforge/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tradeforge/io-binance':
+        specifier: workspace:*
+        version: link:../io-binance
+      '@tradeforge/sim':
+        specifier: workspace:*
+        version: link:../sim
+    devDependencies:
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.0(jiti@1.21.7)(postcss@8.5.6)(tsx@4.20.5)(typescript@5.9.2)(yaml@2.8.1)
 
   packages/sim:
     devDependencies:

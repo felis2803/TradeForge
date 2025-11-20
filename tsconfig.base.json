@@ -9,7 +9,9 @@
       "@tradeforge/core": ["packages/core/src/index.ts"],
       "@tradeforge/io-binance": ["packages/io-binance/src/index.ts"],
       "@tradeforge/schemas": ["packages/schemas/src/index.ts"],
-      "@tradeforge/validation": ["packages/validation/src/index.ts"]
+      "@tradeforge/validation": ["packages/validation/src/index.ts"],
+      "@tradeforge/sim": ["packages/sim/src/index.ts"],
+      "@tradeforge/sdk": ["packages/sdk/src/index.ts"]
     },
     "strict": true,
     "exactOptionalPropertyTypes": true,
