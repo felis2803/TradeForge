@@ -15,12 +15,23 @@ import {
   type DepthDiff as SimDepthDiff,
 } from '@tradeforge/sim';
 
+export interface LiquidationEvent {
+  reason: string;
+  position: bigint;
+  balance: bigint;
+  unrealizedPnL: bigint;
+  equity: bigint;
+  minEquity: bigint;
+  ts: number;
+}
+
 export interface BotContext {
   placeOrder(order: Omit<SubmitOrder, 'ts'>): string;
   cancelOrder(orderId: string): boolean;
   readonly position: bigint;
   readonly balance: bigint;
   readonly unrealizedPnL: bigint;
+  readonly equity: bigint;
 }
 
 export interface BotConfig {
@@ -32,9 +43,11 @@ export interface BotConfig {
   onOrderUpdate?: (order: OrderView) => void;
   onOrderFill?: (fill: FillEvent, ctx: BotContext) => void;
   onOrderReject?: (event: RejectEvent) => void;
+  onLiquidation?: (event: LiquidationEvent) => void;
   onError?: (err: Error) => void;
   initialBasePosition?: bigint;
   initialQuoteBalance?: bigint;
+  liquidationMarginRatio?: number; // Default: 0.1 (10%)
 }
 
 function wrapStream<T>(
@@ -160,12 +173,106 @@ export async function runBot(config: BotConfig): Promise<void> {
 
   let position = config.initialBasePosition ?? 0n;
   let balance = config.initialQuoteBalance ?? 0n;
+  const initialBalance = balance;
   let totalCost = 0n; // Cost basis for P/L calculation
   let lastPrice = 0n; // Last seen price from trades
+  const MARGIN_RATIO = config.liquidationMarginRatio ?? 0.1;
+  const minEquity = BigInt(Math.floor(Number(initialBalance) * MARGIN_RATIO));
+  let isLiquidating = false;
+
+  // Helper: Calculate unrealized PnL
+  const calculateUnrealizedPnL = (): bigint => {
+    if (lastPrice === 0n) return 0n;
+    return position * lastPrice - totalCost;
+  };
+
+  // Helper: Calculate equity
+  const calculateEquity = (): bigint => {
+    return balance + calculateUnrealizedPnL();
+  };
+
+  // Helper: Check if liquidation needed
+  const shouldLiquidate = (): boolean => {
+    if (isLiquidating) return false; // Already liquidating
+    if (position === 0n) return false; // No position to liquidate
+    const equity = calculateEquity();
+    return equity < minEquity;
+  };
+
+  // Helper: Check if order would violate margin
+  const checkSufficientBalance = (order: Omit<SubmitOrder, 'ts'>): boolean => {
+    // Estimate worst-case cost for this order
+    let estimatedCost = 0n;
+    if (order.side === 'BUY') {
+      // For buy, we need to pay price * qty
+      const price = order.type === 'LIMIT' ? (order.price ?? 0n) : lastPrice;
+      estimatedCost = price * order.qty;
+    } else {
+      // For sell, we receive funds, so cost is negative (adds to balance)
+      const price = order.type === 'LIMIT' ? (order.price ?? 0n) : lastPrice;
+      estimatedCost = -(price * order.qty);
+    }
+
+    // Calculate equity after this order
+    const newBalance = balance - estimatedCost;
+    const equity = newBalance + calculateUnrealizedPnL();
+    return equity >= minEquity;
+  };
+
+  // Helper: Trigger liquidation
+  const triggerLiquidation = () => {
+    if (isLiquidating) return;
+    if (position === 0n) return;
+
+    isLiquidating = true;
+    const equity = calculateEquity();
+    const unrealizedPnL = calculateUnrealizedPnL();
+
+    // Log liquidation event
+    const liquidationEvent: LiquidationEvent = {
+      reason: `Equity (${equity}) fell below minimum (${minEquity})`,
+      position,
+      balance,
+      unrealizedPnL,
+      equity,
+      minEquity,
+      ts: Number(currentTs),
+    };
+
+    config.onLiquidation?.(liquidationEvent);
+
+    // Close position with market order
+    const closeSide = position > 0n ? 'SELL' : 'BUY';
+    const closeQty = position > 0n ? position : -position;
+
+    if (engineRef && closeQty > 0n) {
+      try {
+        engineRef.submitOrder({
+          type: 'MARKET',
+          side: closeSide,
+          qty: closeQty,
+          ts: Number(currentTs),
+        });
+      } catch (err) {
+        console.error('[Liquidation] Failed to submit liquidation order:', err);
+      }
+    }
+  };
 
   const ctx: BotContext = {
     placeOrder: (order) => {
       if (!engineRef) throw new Error('Engine not initialized');
+
+      // Pre-execution validation
+      if (!checkSufficientBalance(order)) {
+        const equity = calculateEquity();
+        console.error(
+          `[Order Rejected] Insufficient balance. Order would violate margin requirement. ` +
+            `Equity: ${equity}, Min required: ${minEquity}, Order: ${order.side} ${order.qty}`,
+        );
+        return ''; // Return empty string to indicate rejection
+      }
+
       // Use tracked timestamp or 0 if not available yet
       return engineRef.submitOrder({ ...order, ts: Number(currentTs) });
     },
@@ -180,11 +287,10 @@ export async function runBot(config: BotConfig): Promise<void> {
       return balance;
     },
     get unrealizedPnL() {
-      // Unrealized P/L = current market value - cost basis
-      // Market value = position * lastPrice
-      // Cost basis = totalCost
-      if (lastPrice === 0n) return 0n;
-      return position * lastPrice - totalCost;
+      return calculateUnrealizedPnL();
+    },
+    get equity() {
+      return calculateEquity();
     },
   };
 
@@ -240,6 +346,11 @@ export async function runBot(config: BotConfig): Promise<void> {
     // Inject symbol to match Trade interface from io-binance
     const fullTrade = { ...trade, symbol: config.symbol } as unknown as Trade;
     config.onTrade?.(fullTrade, ctx);
+
+    // Check for liquidation after price update
+    if (shouldLiquidate()) {
+      triggerLiquidation();
+    }
   });
 
   engine.on('orderUpdated', (order: OrderView) => {
@@ -256,6 +367,12 @@ export async function runBot(config: BotConfig): Promise<void> {
       balance += fill.price * fill.qty;
       totalCost -= fill.price * fill.qty;
     }
+
+    // Reset liquidation flag if position is closed
+    if (position === 0n) {
+      isLiquidating = false;
+    }
+
     config.onOrderFill?.(fill, ctx);
   });
 

@@ -63,6 +63,26 @@ await runBot({
       `[Realtime] Order filled! Price: ${priceStr} USDT, Qty: ${qtyStr} BTC, Pos: ${posStr} BTC, Bal: ${balStr} USDT, P/L: ${pnlStr} USDT`,
     );
   },
+  onLiquidation: (event) => {
+    const posStr = fromQtyInt(event.position as QtyInt, SCALE);
+    const balStr = formatQuote(event.balance);
+    const pnlStr = formatQuote(event.unrealizedPnL);
+    const equityStr = formatQuote(event.equity);
+    const minEquityStr = formatQuote(event.minEquity);
+
+    console.log('\n');
+    console.log('═'.repeat(70));
+    console.log('🚨 LIQUIDATION TRIGGERED 🚨');
+    console.log('═'.repeat(70));
+    console.log(`Reason:       ${event.reason}`);
+    console.log(`Position:     ${posStr} BTC`);
+    console.log(`Balance:      ${balStr} USDT`);
+    console.log(`Unrealized P/L: ${pnlStr} USDT`);
+    console.log(`Equity:       ${equityStr} USDT`);
+    console.log(`Min Equity:   ${minEquityStr} USDT`);
+    console.log('═'.repeat(70));
+    console.log('\n');
+  },
 });
 
 console.log('Bot finished.');
