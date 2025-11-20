@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeForge Dashboard</title>
+    <title>TradeForge Multi-Bot Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -25,6 +26,7 @@
             --accent-purple: #7c3aed;
             --accent-green: #10b981;
             --accent-red: #ef4444;
+            --accent-yellow: #f59e0b;
             --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
 
@@ -37,13 +39,13 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
         }
 
         header {
             text-align: center;
-            margin-bottom: 3rem;
+            margin-bottom: 2rem;
             animation: fadeInDown 0.6s ease;
         }
 
@@ -83,8 +85,135 @@
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* Bot Tabs */
+        .bot-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            border-bottom: 2px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .bot-tab {
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem 0.5rem 0 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .bot-tab:hover {
+            background: rgba(76, 154, 255, 0.1);
+            border-color: var(--accent-blue);
+        }
+
+        .bot-tab.active {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            border-color: transparent;
+            transform: translateY(-2px);
+        }
+
+        .bot-status-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-green);
+        }
+
+        .bot-count {
+            background: var(--accent-purple);
+            padding: 0.25rem 0.5rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Bot Overview Grid */
+        .bot-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .bot-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .bot-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-blue);
+            box-shadow: 0 8px 16px rgba(76, 154, 255, 0.2);
+        }
+
+        .bot-card.active {
+            border-color: var(--accent-purple);
+            background: rgba(124, 58, 237, 0.1);
+        }
+
+        .bot-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .bot-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .bot-symbol {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .bot-strategy {
+            font-size: 0.75rem;
+            color: var(--accent-blue);
+            margin-bottom: 0.5rem;
+        }
+
+        .bot-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.75rem;
+        }
+
+        .bot-stat {
+            flex: 1;
+        }
+
+        .bot-stat-label {
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .bot-stat-value {
+            font-weight: 600;
         }
 
         .grid {
@@ -271,6 +400,7 @@
                 opacity: 0;
                 transform: translateY(10px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -282,6 +412,7 @@
                 opacity: 0;
                 transform: translateY(-20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -293,6 +424,7 @@
                 opacity: 0;
                 transform: translateX(-10px);
             }
+
             to {
                 opacity: 1;
                 transform: translateX(0);
@@ -307,85 +439,144 @@
             font-weight: 600;
             font-size: 0.875rem;
         }
+
+        .view-toggle {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .toggle-btn {
+            padding: 0.5rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.875rem;
+            margin: 0 0.25rem;
+        }
+
+        .toggle-btn.active {
+            background: var(--accent-blue);
+            border-color: var(--accent-blue);
+        }
+
+        .toggle-btn:hover:not(.active) {
+            background: rgba(76, 154, 255, 0.1);
+        }
+
+        #botDetailView,
+        #botOverviewView {
+            display: none;
+        }
+
+        #botDetailView.active,
+        #botOverviewView.active {
+            display: block;
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
         <header>
-            <h1>🚀 TradeForge Dashboard</h1>
+            <h1>🚀 TradeForge Multi-Bot Dashboard</h1>
             <div class="status-badge">
                 <span class="status-dot" id="statusDot"></span>
                 <span id="connectionStatus">Connecting...</span>
+                <span class="bot-count" id="botCount">0 Bots</span>
             </div>
         </header>
 
-        <div class="grid">
-            <!-- Bot Info -->
-            <div class="card">
-                <div class="card-title">Bot Information</div>
-                <div class="stat-value"><span class="symbol-tag" id="symbolDisplay">-</span></div>
-                <div class="stat-label">Trading Symbol</div>
+        <!-- View Toggle -->
+        <div class="view-toggle">
+            <button class="toggle-btn active" onclick="switchView('overview')">📊 Overview</button>
+            <button class="toggle-btn" onclick="switchView('detail')">🔍 Bot Detail</button>
+        </div>
+
+        <!-- Bot Overview View -->
+        <div id="botOverviewView" class="active">
+            <div class="bot-overview" id="botOverview">
+                <div class="empty-state">No bots connected yet...</div>
+            </div>
+        </div>
+
+        <!-- Bot Detail View -->
+        <div id="botDetailView">
+            <!-- Bot Tabs -->
+            <div class="bot-tabs" id="botTabs">
+                <div class="empty-state">No bots available</div>
             </div>
 
-            <!-- Balance -->
-            <div class="card">
-                <div class="card-title">Quote Balance</div>
-                <div class="stat-value neutral" id="balanceDisplay">0.00</div>
-                <div class="stat-label">USDT</div>
-            </div>
-
-            <!-- Position -->
-            <div class="card">
-                <div class="card-title">Position</div>
-                <div class="stat-value neutral" id="positionDisplay">0.00000</div>
-                <div class="stat-label">BTC</div>
-            </div>
-
-            <!-- Unrealized P/L -->
-            <div class="card">
-                <div class="card-title">Unrealized P/L</div>
-                <div class="stat-value neutral" id="pnlDisplay">0.00</div>
-                <div class="stat-label">USDT</div>
-            </div>
-
-            <!-- Active Orders -->
-            <div class="card wide-card">
-                <div class="card-title">Active Orders</div>
-                <div class="scroll-container">
-                    <table id="ordersTable">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Type</th>
-                                <th>Side</th>
-                                <th>Price</th>
-                                <th>Quantity</th>
-                                <th>Filled</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="ordersBody">
-                            <tr>
-                                <td colspan="7" class="empty-state">No active orders</td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <div class="grid">
+                <!-- Bot Info -->
+                <div class="card">
+                    <div class="card-title">Bot Information</div>
+                    <div class="stat-value"><span class="symbol-tag" id="symbolDisplay">-</span></div>
+                    <div class="stat-label" id="strategyDisplay">No strategy</div>
                 </div>
-            </div>
 
-            <!-- Recent Trades -->
-            <div class="card wide-card">
-                <div class="card-title">Recent Market Trades</div>
-                <div class="scroll-container" id="tradesFeed">
-                    <div class="empty-state">Waiting for trades...</div>
+                <!-- Balance -->
+                <div class="card">
+                    <div class="card-title">Quote Balance</div>
+                    <div class="stat-value neutral" id="balanceDisplay">0.00</div>
+                    <div class="stat-label">USDT</div>
                 </div>
-            </div>
 
-            <!-- Order Fills -->
-            <div class="card wide-card">
-                <div class="card-title">Order Fills</div>
-                <div class="scroll-container" id="fillsFeed">
-                    <div class="empty-state">No fills yet</div>
+                <!-- Position -->
+                <div class="card">
+                    <div class="card-title">Position</div>
+                    <div class="stat-value neutral" id="positionDisplay">0.00000</div>
+                    <div class="stat-label">BTC</div>
+                </div>
+
+                <!-- Unrealized P/L -->
+                <div class="card">
+                    <div class="card-title">Unrealized P/L</div>
+                    <div class="stat-value neutral" id="pnlDisplay">0.00</div>
+                    <div class="stat-label">USDT</div>
+                </div>
+
+                <!-- Active Orders -->
+                <div class="card wide-card">
+                    <div class="card-title">Active Orders</div>
+                    <div class="scroll-container">
+                        <table id="ordersTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Type</th>
+                                    <th>Side</th>
+                                    <th>Price</th>
+                                    <th>Quantity</th>
+                                    <th>Filled</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ordersBody">
+                                <tr>
+                                    <td colspan="7" class="empty-state">No active orders</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Recent Trades -->
+                <div class="card wide-card">
+                    <div class="card-title">Recent Market Trades</div>
+                    <div class="scroll-container" id="tradesFeed">
+                        <div class="empty-state">Waiting for trades...</div>
+                    </div>
+                </div>
+
+                <!-- Order Fills -->
+                <div class="card wide-card">
+                    <div class="card-title">Order Fills</div>
+                    <div class="scroll-container" id="fillsFeed">
+                        <div class="empty-state">No fills yet</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -395,21 +586,17 @@
         let ws = null;
         let reconnectTimeout = null;
         const MAX_FEED_ITEMS = 50;
+        let currentView = 'overview';
+        let activeBotId = null;
 
         const state = {
-            symbol: '',
-            balance: 0n,
-            position: 0n,
-            unrealizedPnL: 0n,
-            orders: new Map(),
-            trades: [],
-            fills: []
+            bots: new Map(), // botId -> { info, state, trades, fills }
         };
 
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
-            
+
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
@@ -445,7 +632,7 @@
         function updateConnectionStatus(connected) {
             const statusDot = document.getElementById('statusDot');
             const statusText = document.getElementById('connectionStatus');
-            
+
             if (connected) {
                 statusDot.classList.add('connected');
                 statusText.textContent = 'Connected';
@@ -456,57 +643,244 @@
         }
 
         function handleMessage(msg) {
+            const botId = msg.botId;
+
             switch (msg.type) {
+                case 'botList':
+                    // Initialize all bots
+                    msg.data.forEach(botInfo => {
+                        if (!state.bots.has(botInfo.id)) {
+                            state.bots.set(botInfo.id, {
+                                info: botInfo,
+                                state: {
+                                    symbol: botInfo.symbol,
+                                    balance: BigInt(botInfo.balance || 0),
+                                    position: BigInt(botInfo.position || 0),
+                                    unrealizedPnL: BigInt(botInfo.unrealizedPnL || 0),
+                                    orders: new Map(),
+                                },
+                                trades: [],
+                                fills: []
+                            });
+                        }
+                    });
+                    updateBotCount();
+                    updateBotTabs();
+                    updateBotOverview();
+                    if (!activeBotId && state.bots.size > 0) {
+                        activeBotId = Array.from(state.bots.keys())[0];
+                        updateBotDetailView();
+                    }
+                    break;
+
+                case 'botRegistered':
+                    const newBot = {
+                        info: msg.data,
+                        state: {
+                            symbol: msg.data.symbol,
+                            balance: 0n,
+                            position: 0n,
+                            unrealizedPnL: 0n,
+                            orders: new Map(),
+                        },
+                        trades: [],
+                        fills: []
+                    };
+                    state.bots.set(msg.data.id, newBot);
+                    updateBotCount();
+                    updateBotTabs();
+                    updateBotOverview();
+                    if (!activeBotId) {
+                        activeBotId = msg.data.id;
+                        updateBotDetailView();
+                    }
+                    break;
+
+                case 'botUnregistered':
+                    state.bots.delete(msg.data.id);
+                    if (activeBotId === msg.data.id) {
+                        activeBotId = state.bots.size > 0 ? Array.from(state.bots.keys())[0] : null;
+                        updateBotDetailView();
+                    }
+                    updateBotCount();
+                    updateBotTabs();
+                    updateBotOverview();
+                    break;
+
                 case 'init':
-                    state.symbol = msg.data.symbol;
-                    state.balance = BigInt(msg.data.balance);
-                    state.position = BigInt(msg.data.position);
-                    state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
+                    if (!botId || !state.bots.has(botId)) return;
+                    const bot = state.bots.get(botId);
+                    bot.state.symbol = msg.data.symbol;
+                    bot.state.balance = BigInt(msg.data.balance);
+                    bot.state.position = BigInt(msg.data.position);
+                    bot.state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
                     if (msg.data.orders) {
                         msg.data.orders.forEach(order => {
-                            state.orders.set(order.id, order);
+                            bot.state.orders.set(order.id, order);
                         });
                     }
-                    updateUI();
+                    updateBotOverview();
+                    if (botId === activeBotId) {
+                        updateBotDetailView();
+                    }
                     break;
-                
+
                 case 'trade':
-                    state.trades.unshift(msg.data);
-                    if (state.trades.length > MAX_FEED_ITEMS) {
-                        state.trades.pop();
+                    if (!botId || !state.bots.has(botId)) return;
+                    state.bots.get(botId).trades.unshift(msg.data);
+                    if (state.bots.get(botId).trades.length > MAX_FEED_ITEMS) {
+                        state.bots.get(botId).trades.pop();
                     }
-                    updateTradesFeed();
+                    if (botId === activeBotId) {
+                        updateTradesFeed();
+                    }
                     break;
-                
+
                 case 'orderUpdate':
+                    if (!botId || !state.bots.has(botId)) return;
                     const order = msg.data;
+                    const botOrders = state.bots.get(botId).state.orders;
                     if (order.status === 'FILLED' || order.status === 'CANCELED') {
-                        state.orders.delete(order.id);
+                        botOrders.delete(order.id);
                     } else {
-                        state.orders.set(order.id, order);
+                        botOrders.set(order.id, order);
                     }
-                    updateOrdersTable();
+                    if (botId === activeBotId) {
+                        updateOrdersTable();
+                    }
                     break;
-                
+
                 case 'fill':
-                    state.fills.unshift(msg.data);
-                    if (state.fills.length > MAX_FEED_ITEMS) {
-                        state.fills.pop();
+                    if (!botId || !state.bots.has(botId)) return;
+                    state.bots.get(botId).fills.unshift(msg.data);
+                    if (state.bots.get(botId).fills.length > MAX_FEED_ITEMS) {
+                        state.bots.get(botId).fills.pop();
                     }
-                    updateFillsFeed();
+                    if (botId === activeBotId) {
+                        updateFillsFeed();
+                    }
                     break;
-                
+
                 case 'balance':
-                    state.balance = BigInt(msg.data.balance);
-                    state.position = BigInt(msg.data.position);
-                    state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
-                    updateBalanceDisplay();
+                    if (!botId || !state.bots.has(botId)) return;
+                    state.bots.get(botId).state.balance = BigInt(msg.data.balance);
+                    state.bots.get(botId).state.position = BigInt(msg.data.position);
+                    state.bots.get(botId).state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
+                    updateBotOverview();
+                    if (botId === activeBotId) {
+                        updateBalanceDisplay();
+                    }
                     break;
-                
+
                 case 'liquidation':
-                    handleLiquidation(msg.data);
+                    if (!botId || !state.bots.has(botId)) return;
+                    if (botId === activeBotId) {
+                        handleLiquidation(msg.data);
+                    }
                     break;
             }
+        }
+
+        function switchView(view) {
+            currentView = view;
+            const buttons = document.querySelectorAll('.toggle-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (view === 'overview') {
+                document.getElementById('botOverviewView').classList.add('active');
+                document.getElementById('botDetailView').classList.remove('active');
+            } else {
+                document.getElementById('botOverviewView').classList.remove('active');
+                document.getElementById('botDetailView').classList.add('active');
+            }
+        }
+
+        function updateBotCount() {
+            document.getElementById('botCount').textContent = `${state.bots.size} Bot${state.bots.size !== 1 ? 's' : ''}`;
+        }
+
+        function updateBotTabs() {
+            const tabsContainer = document.getElementById('botTabs');
+
+            if (state.bots.size === 0) {
+                tabsContainer.innerHTML = '<div class="empty-state">No bots available</div>';
+                return;
+            }
+
+            const tabs = Array.from(state.bots.entries()).map(([id, bot]) => {
+                const isActive = id === activeBotId;
+                return `
+                    <div class="bot-tab ${isActive ? 'active' : ''}" onclick="selectBot('${id}')">
+                        <span class="bot-status-indicator"></span>
+                        <span>${bot.info.name}</span>
+                    </div>
+                `;
+            }).join('');
+
+            tabsContainer.innerHTML = tabs;
+        }
+
+        function updateBotOverview() {
+            const overviewContainer = document.getElementById('botOverview');
+
+            if (state.bots.size === 0) {
+                overviewContainer.innerHTML = '<div class="empty-state">No bots connected yet...</div>';
+                return;
+            }
+
+            const cards = Array.from(state.bots.entries()).map(([id, bot]) => {
+                const isActive = id === activeBotId;
+                const pnl = bot.state.unrealizedPnL;
+                const pnlClass = pnl > 0n ? 'positive' : pnl < 0n ? 'negative' : 'neutral';
+
+                return `
+                    <div class="bot-card ${isActive ? 'active' : ''}" onclick="selectBot('${id}'); switchView('detail');">
+                        <div class="bot-card-header">
+                            <div class="bot-name">${bot.info.name}</div>
+                            <span class="bot-status-indicator"></span>
+                        </div>
+                        <div class="bot-symbol">${bot.state.symbol}</div>
+                        ${bot.info.strategy ? `<div class="bot-strategy">${bot.info.strategy}</div>` : ''}
+                        <div class="bot-stats">
+                            <div class="bot-stat">
+                                <div class="bot-stat-label">Balance</div>
+                                <div class="bot-stat-value">${formatQuote(bot.state.balance)}</div>
+                            </div>
+                            <div class="bot-stat">
+                                <div class="bot-stat-label">P/L</div>
+                                <div class="bot-stat-value ${pnlClass}">${formatQuote(bot.state.unrealizedPnL)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            overviewContainer.innerHTML = cards;
+        }
+
+        function selectBot(botId) {
+            activeBotId = botId;
+            updateBotTabs();
+            updateBotDetailView();
+            updateBotOverview();
+        }
+
+        function updateBotDetailView() {
+            if (!activeBotId || !state.bots.has(activeBotId)) {
+                document.getElementById('symbolDisplay').textContent = '-';
+                document.getElementById('strategyDisplay').textContent = 'No bot selected';
+                return;
+            }
+
+            const bot = state.bots.get(activeBotId);
+            document.getElementById('symbolDisplay').textContent = bot.state.symbol || '-';
+            document.getElementById('strategyDisplay').textContent = bot.info.strategy || 'No strategy';
+
+            updateBalanceDisplay();
+            updateOrdersTable();
+            updateTradesFeed();
+            updateFillsFeed();
         }
 
         function formatQuote(amount) {
@@ -543,33 +917,30 @@
             return new Date(ts).toLocaleTimeString();
         }
 
-        function updateUI() {
-            document.getElementById('symbolDisplay').textContent = state.symbol || '-';
-            updateBalanceDisplay();
-            updateOrdersTable();
-        }
-
         function updateBalanceDisplay() {
+            if (!activeBotId || !state.bots.has(activeBotId)) return;
+
+            const botState = state.bots.get(activeBotId).state;
             const balanceEl = document.getElementById('balanceDisplay');
             const positionEl = document.getElementById('positionDisplay');
             const pnlEl = document.getElementById('pnlDisplay');
 
-            balanceEl.textContent = formatQuote(state.balance);
-            positionEl.textContent = formatBase(state.position);
-            pnlEl.textContent = formatQuote(state.unrealizedPnL);
+            balanceEl.textContent = formatQuote(botState.balance);
+            positionEl.textContent = formatBase(botState.position);
+            pnlEl.textContent = formatQuote(botState.unrealizedPnL);
 
             // Update colors
-            if (state.unrealizedPnL > 0n) {
+            if (botState.unrealizedPnL > 0n) {
                 pnlEl.className = 'stat-value positive';
-            } else if (state.unrealizedPnL < 0n) {
+            } else if (botState.unrealizedPnL < 0n) {
                 pnlEl.className = 'stat-value negative';
             } else {
                 pnlEl.className = 'stat-value neutral';
             }
 
-            if (state.position > 0n) {
+            if (botState.position > 0n) {
                 positionEl.className = 'stat-value positive';
-            } else if (state.position < 0n) {
+            } else if (botState.position < 0n) {
                 positionEl.className = 'stat-value negative';
             } else {
                 positionEl.className = 'stat-value neutral';
@@ -577,14 +948,17 @@
         }
 
         function updateOrdersTable() {
+            if (!activeBotId || !state.bots.has(activeBotId)) return;
+
             const tbody = document.getElementById('ordersBody');
-            
-            if (state.orders.size === 0) {
+            const orders = state.bots.get(activeBotId).state.orders;
+
+            if (orders.size === 0) {
                 tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No active orders</td></tr>';
                 return;
             }
 
-            const rows = Array.from(state.orders.values()).map(order => `
+            const rows = Array.from(orders.values()).map(order => `
                 <tr>
                     <td>${order.id.substring(0, 8)}</td>
                     <td><span class="badge badge-${order.type.toLowerCase()}">${order.type}</span></td>
@@ -600,14 +974,17 @@
         }
 
         function updateTradesFeed() {
+            if (!activeBotId || !state.bots.has(activeBotId)) return;
+
             const feed = document.getElementById('tradesFeed');
-            
-            if (state.trades.length === 0) {
+            const trades = state.bots.get(activeBotId).trades;
+
+            if (trades.length === 0) {
                 feed.innerHTML = '<div class="empty-state">Waiting for trades...</div>';
                 return;
             }
 
-            const items = state.trades.map(trade => `
+            const items = trades.map(trade => `
                 <div class="feed-item">
                     <div class="feed-header">
                         <span class="badge badge-${trade.side.toLowerCase()}">${trade.side}</span>
@@ -623,14 +1000,17 @@
         }
 
         function updateFillsFeed() {
+            if (!activeBotId || !state.bots.has(activeBotId)) return;
+
             const feed = document.getElementById('fillsFeed');
-            
-            if (state.fills.length === 0) {
+            const fills = state.bots.get(activeBotId).fills;
+
+            if (fills.length === 0) {
                 feed.innerHTML = '<div class="empty-state">No fills yet</div>';
                 return;
             }
 
-            const items = state.fills.map(fill => `
+            const items = fills.map(fill => `
                 <div class="feed-item">
                     <div class="feed-header">
                         <span class="badge badge-${fill.side.toLowerCase()}">${fill.side}</span>
@@ -670,4 +1050,5 @@
         connectWebSocket();
     </script>
 </body>
+
 </html>

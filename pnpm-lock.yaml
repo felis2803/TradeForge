@@ -179,6 +179,22 @@ importers:
         specifier: workspace:*
         version: link:../../packages/validation
 
+  examples/14-multi-bot:
+    dependencies:
+      '@tradeforge/feed-binance':
+        specifier: workspace:*
+        version: link:../../packages/feed-binance
+      '@tradeforge/io-binance':
+        specifier: workspace:*
+        version: link:../../packages/io-binance
+      '@tradeforge/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      tsx:
+        specifier: ^4.20.5
+        version: 4.20.5
+
   packages/core:
     dependencies:
       '@tradeforge/validation':

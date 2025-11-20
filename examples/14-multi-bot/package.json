@@ -1,0 +1,16 @@
+{
+  "name": "14-multi-bot",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx run.ts"
+  },
+  "dependencies": {
+    "@tradeforge/sdk": "workspace:*",
+    "@tradeforge/io-binance": "workspace:*",
+    "@tradeforge/feed-binance": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.5"
+  }
+}

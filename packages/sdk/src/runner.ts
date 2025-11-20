@@ -58,7 +58,15 @@ export interface BotConfig {
   initialBasePosition?: bigint;
   initialQuoteBalance?: bigint;
   liquidationMarginRatio?: number; // Default: 0.1 (10%)
-  dashboard?: DashboardConfig; // Optional dashboard configuration
+  dashboard?:
+    | DashboardConfig // Legacy: create own dashboard server
+    | {
+        // New: register with shared dashboard server
+        server: DashboardServer;
+        botId?: string; // Auto-generated if not provided
+        botName?: string; // Default: symbol
+        strategy?: string; // Strategy description
+      };
 }
 
 function wrapStream<T>(
@@ -106,17 +114,51 @@ function isAsyncIterable<T>(input: unknown): input is AsyncIterable<T> {
 export async function runBot(config: BotConfig): Promise<void> {
   // Initialize dashboard if enabled
   let dashboardServer: DashboardServer | null = null;
+  let botHandle: import('./dashboard.js').BotHandle | null = null;
+  let ownedDashboard = false; // Track if we created the server
   const activeOrders = new Map<string, OrderView>();
 
-  if (config.dashboard?.enabled) {
-    dashboardServer = createDashboardServer(config.dashboard);
-    dashboardServer.updateState({
-      symbol: config.symbol,
-      balance: config.initialQuoteBalance ?? 0n,
-      position: config.initialBasePosition ?? 0n,
-      unrealizedPnL: 0n,
-      orders: activeOrders,
-    });
+  if (config.dashboard) {
+    if ('enabled' in config.dashboard && config.dashboard.enabled) {
+      // Legacy mode: create own dashboard server
+      dashboardServer = createDashboardServer(config.dashboard);
+      ownedDashboard = true;
+
+      // Auto-register in legacy mode
+      const legacyConfig = config.dashboard as DashboardConfig & {
+        botId?: string;
+        botName?: string;
+        strategy?: string;
+      };
+      const botId = legacyConfig.botId ?? `bot-${Date.now()}`;
+      botHandle = dashboardServer.registerBot(botId, {
+        name: legacyConfig.botName ?? config.symbol,
+        symbol: config.symbol,
+        ...(legacyConfig.strategy && { strategy: legacyConfig.strategy }),
+      });
+    } else if ('server' in config.dashboard) {
+      // New mode: register with existing server
+      dashboardServer = config.dashboard.server;
+      const botId = config.dashboard.botId ?? `bot-${Date.now()}`;
+      botHandle = dashboardServer.registerBot(botId, {
+        name: config.dashboard.botName ?? config.symbol,
+        symbol: config.symbol,
+        ...(config.dashboard.strategy && {
+          strategy: config.dashboard.strategy,
+        }),
+      });
+    }
+
+    // Update initial state
+    if (botHandle) {
+      botHandle.updateState({
+        symbol: config.symbol,
+        balance: config.initialQuoteBalance ?? 0n,
+        position: config.initialBasePosition ?? 0n,
+        unrealizedPnL: 0n,
+        orders: activeOrders,
+      });
+    }
   }
 
   let tradesSource: AsyncIterable<Trade>;
@@ -268,10 +310,7 @@ export async function runBot(config: BotConfig): Promise<void> {
     config.onLiquidation?.(liquidationEvent);
 
     // Broadcast to dashboard
-    dashboardServer?.broadcast(
-      'liquidation',
-      serializeLiquidation(liquidationEvent),
-    );
+    botHandle?.broadcast('liquidation', serializeLiquidation(liquidationEvent));
 
     // Close position with market order
     const closeSide = position > 0n ? 'SELL' : 'BUY';
@@ -379,7 +418,7 @@ export async function runBot(config: BotConfig): Promise<void> {
     const fullTrade = { ...trade, symbol: config.symbol } as unknown as Trade;
 
     // Broadcast to dashboard
-    dashboardServer?.broadcast('trade', serializeTrade(fullTrade));
+    botHandle?.broadcast('trade', serializeTrade(fullTrade));
 
     config.onTrade?.(fullTrade, ctx);
 
@@ -398,8 +437,8 @@ export async function runBot(config: BotConfig): Promise<void> {
     }
 
     // Broadcast to dashboard
-    dashboardServer?.broadcast('orderUpdate', serializeOrder(order));
-    dashboardServer?.updateState({ orders: activeOrders });
+    botHandle?.broadcast('orderUpdate', serializeOrder(order));
+    botHandle?.updateState({ orders: activeOrders });
 
     config.onOrderUpdate?.(order);
   });
@@ -421,9 +460,9 @@ export async function runBot(config: BotConfig): Promise<void> {
     }
 
     // Broadcast to dashboard
-    dashboardServer?.broadcast('fill', serializeFill(fill));
-    dashboardServer?.broadcast('balance', serializeBalance(ctx));
-    dashboardServer?.updateState({
+    botHandle?.broadcast('fill', serializeFill(fill));
+    botHandle?.broadcast('balance', serializeBalance(ctx));
+    botHandle?.updateState({
       balance,
       position,
       unrealizedPnL: calculateUnrealizedPnL(),
@@ -447,8 +486,13 @@ export async function runBot(config: BotConfig): Promise<void> {
   await finished;
   await engine.close();
 
-  // Close dashboard server if it was started
-  if (dashboardServer) {
+  // Unregister bot from dashboard
+  if (botHandle) {
+    botHandle.unregister();
+  }
+
+  // Close dashboard server only if we created it
+  if (ownedDashboard && dashboardServer) {
     await dashboardServer.close();
   }
 }
