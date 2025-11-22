@@ -79,10 +79,14 @@ export function createDashboardServer(
       // Serve assets (JS, CSS, etc.)
       filePath = join(dashboardDir, url);
       const ext = url.split('.').pop();
-      const contentType = ext === 'js' ? 'application/javascript' :
-        ext === 'css' ? 'text/css' :
-          ext === 'map' ? 'application/json' :
-            'application/octet-stream';
+      const contentType =
+        ext === 'js'
+          ? 'application/javascript'
+          : ext === 'css'
+            ? 'text/css'
+            : ext === 'map'
+              ? 'application/json'
+              : 'application/octet-stream';
       res.writeHead(200, { 'Content-Type': contentType });
     } else {
       res.writeHead(404);
@@ -159,7 +163,7 @@ export function createDashboardServer(
   });
 
   // Start HTTP server
-  httpServer.listen(port, () => {
+  httpServer.listen(port, '0.0.0.0', () => {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`🚀 TradeForge Dashboard running at http://localhost:${port}`);
     console.log(`${'='.repeat(60)}\n`);
