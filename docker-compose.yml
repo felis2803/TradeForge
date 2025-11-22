@@ -1,0 +1,11 @@
+version: '3'
+services:
+  chrome:
+    image: browserless/chrome:latest
+    ports:
+      - '3000:3000'
+      - '9222:9222'
+    environment:
+      - CONNECTION_TIMEOUT=60000
+      - MAX_CONCURRENT_SESSIONS=10
+    restart: always
