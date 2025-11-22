@@ -67,7 +67,7 @@ const BTC_MA_PERIOD = 20;
 const meanReversionBot = runBot({
   symbol: 'BTCUSDT' as SymbolId,
   trades: createLiveTradeStream({ symbol: 'BTCUSDT' as SymbolId }),
-  initialQuoteBalance: 10000_00000000n, // $10,000
+  initialQuoteBalance: 100000_00000000n, // $100,000
 
   dashboard: {
     server: dashboard,
@@ -75,6 +75,8 @@ const meanReversionBot = runBot({
     botName: 'BTC Mean Reversion',
     strategy: 'Mean Reversion',
   },
+
+  liquidationMarginRatio: 0.001, // 0.1% - allow small orders
 
   onTrade: (trade, ctx: BotContext) => {
     // Update price history
@@ -146,8 +148,8 @@ const meanReversionBot = runBot({
   onOrderFill: (fill, ctx) => {
     console.log(
       `[BTC Mean Reversion] 📊 Fill: ${fill.side} ${formatBase(fill.qty)} BTC @ $${formatPrice(fill.price)} | ` +
-      `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} BTC | ` +
-      `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
+        `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} BTC | ` +
+        `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
     );
   },
 });
@@ -165,7 +167,7 @@ const ETH_TREND_THRESHOLD = 3;
 const momentumBot = runBot({
   symbol: 'ETHUSDT' as SymbolId,
   trades: createLiveTradeStream({ symbol: 'ETHUSDT' as SymbolId }),
-  initialQuoteBalance: 10000_00000000n, // $10,000
+  initialQuoteBalance: 100000_00000000n, // $100,000
 
   dashboard: {
     server: dashboard,
@@ -173,6 +175,8 @@ const momentumBot = runBot({
     botName: 'ETH Momentum',
     strategy: 'Momentum Following',
   },
+
+  liquidationMarginRatio: 0.001, // 0.1% - allow small orders
 
   onTrade: (trade, ctx: BotContext) => {
     if (!ethPrevPrice) {
@@ -242,8 +246,8 @@ const momentumBot = runBot({
   onOrderFill: (fill, ctx) => {
     console.log(
       `[ETH Momentum] 📊 Fill: ${fill.side} ${formatBase(fill.qty)} ETH @ $${formatPrice(fill.price)} | ` +
-      `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} ETH | ` +
-      `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
+        `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} ETH | ` +
+        `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
     );
   },
 });
@@ -259,7 +263,7 @@ let solActiveSellOrder: string | null = null;
 const marketMakerBot = runBot({
   symbol: 'SOLUSDT' as SymbolId,
   trades: createLiveTradeStream({ symbol: 'SOLUSDT' as SymbolId }),
-  initialQuoteBalance: 10000_00000000n, // $10,000
+  initialQuoteBalance: 100000_00000000n, // $100,000
 
   dashboard: {
     server: dashboard,
@@ -267,6 +271,8 @@ const marketMakerBot = runBot({
     botName: 'SOL Market Maker',
     strategy: 'Market Making',
   },
+
+  liquidationMarginRatio: 0.001, // 0.1% - allow small orders
 
   onTrade: (trade, ctx: BotContext) => {
     // Only maintain orders when we have no position
@@ -323,8 +329,8 @@ const marketMakerBot = runBot({
   onOrderFill: (fill, ctx) => {
     console.log(
       `[SOL Market Maker] 💰 Fill: ${fill.side} ${formatBase(fill.qty)} SOL @ $${formatPrice(fill.price)} | ` +
-      `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} SOL | ` +
-      `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
+        `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} SOL | ` +
+        `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
     );
 
     // Clear active order IDs on fill

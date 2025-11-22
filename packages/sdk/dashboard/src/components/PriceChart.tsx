@@ -159,16 +159,23 @@ export function PriceChart({ symbol, trades, orders }: PriceChartProps) {
 
     // Update price lines when orders change
     useEffect(() => {
+        console.log('[PriceChart] Orders effect triggered, orders:', orders);
+        console.log('[PriceChart] Orders.size:', orders.size);
+        console.log('[PriceChart] candleSeriesRef.current:', candleSeriesRef.current);
+
         if (!candleSeriesRef.current) return;
 
         const activeIds = new Set<string>();
 
         // Update or create lines for active orders
         orders.forEach((order) => {
+            console.log('[PriceChart] Processing order:', order);
             activeIds.add(order.id);
             const price = formatPrice(order.price);
             const color = order.side === 'BUY' ? '#10b981' : '#ef4444';
             const title = `${order.side} ${formatQty(order.qty)}`;
+
+            console.log('[PriceChart] Creating/updating line:', { price, color, title });
 
             if (priceLinesRef.current.has(order.id)) {
                 // Update existing line
@@ -188,6 +195,7 @@ export function PriceChart({ symbol, trades, orders }: PriceChartProps) {
                     axisLabelVisible: true,
                     title,
                 });
+                console.log('[PriceChart] Created price line:', line);
                 priceLinesRef.current.set(order.id, line);
             }
         });

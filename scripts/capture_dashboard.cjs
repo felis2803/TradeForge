@@ -12,6 +12,14 @@ async function capture() {
         const context = browser.contexts()[0] || await browser.newContext();
         const page = await context.newPage();
 
+        // Capture console logs
+        page.on('console', msg => {
+            const text = msg.text();
+            if (text.includes('[PriceChart]') || text.includes('orders')) {
+                console.log(`[BROWSER CONSOLE] ${msg.type()}: ${text}`);
+            }
+        });
+
         // Use host.docker.internal to access the host machine from the container
         const url = 'http://host.docker.internal:3000';
 
