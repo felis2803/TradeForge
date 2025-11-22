@@ -13,8 +13,28 @@ async function capture() {
         const page = await context.newPage();
 
         // Use host.docker.internal to access the host machine from the container
-        // But wait, the browser is in the container, so it needs to reach the dashboard on the host.
-        // Docker Desktop for Windows supports host.docker.internal.
+        const url = 'http://host.docker.internal:3000';
+
+        console.log(`Navigating to ${url}...`);
+        await page.goto(url);
+
+        console.log('Waiting for dashboard to load...');
+        // Wait for a key element that signifies the dashboard is ready
+        try {
+            await page.waitForSelector('.card', { state: 'visible', timeout: 30000 });
+            console.log('Dashboard loaded successfully!');
+        } catch (e) {
+            console.log('Timeout waiting for .card, taking screenshot anyway...');
+        }
+
+        // Give it a moment for charts to render completely
+        await page.waitForTimeout(5000);
+
+        const screenshotPath = path.resolve(__dirname, '../dashboard_capture.png');
+        console.log(`Taking screenshot to ${screenshotPath}...`);
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+
+        console.log('Done!');
     } catch (error) {
         console.error('Error:', error);
     } finally {

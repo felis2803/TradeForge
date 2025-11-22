@@ -83,6 +83,7 @@ export function BotDetail({ bot, bots, onBotChange }: BotDetailProps) {
                 <PriceChart
                     symbol={bot.state.symbol}
                     trades={bot.trades}
+                    orders={bot.state.orders}
                 />
 
                 {/* Active Orders */}

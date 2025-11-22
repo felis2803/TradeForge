@@ -3,15 +3,17 @@ import {
     createChart,
     IChartApi,
     ISeriesApi,
+    IPriceLine,
     Time,
     ColorType,
     CandlestickData,
 } from 'lightweight-charts';
-import type { Trade } from '../types/dashboard';
+import type { Trade, Order } from '../types/dashboard';
 
 interface PriceChartProps {
     symbol: string;
     trades: Trade[];
+    orders: Map<string, Order>;
 }
 
 function formatPrice(price: bigint): number {
@@ -20,6 +22,13 @@ function formatPrice(price: bigint): number {
     const whole = Number(price / 100000n);
     const fraction = Number(price % 100000n) / 1e5;
     return whole + fraction;
+}
+
+function formatQty(qty: bigint): string {
+    // Assuming qty scale 5 for simplicity or consistency with price
+    // In reality we should use the symbol's qtyScale, but for display 5 decimals is usually safe
+    const val = Number(qty) / 1e5;
+    return val.toFixed(3);
 }
 
 // Aggregate trades into candlestick data (1-minute candles)
@@ -68,10 +77,11 @@ function aggregateTradesToCandles(trades: Trade[]): CandlestickData[] {
     }));
 }
 
-export function PriceChart({ symbol, trades }: PriceChartProps) {
+export function PriceChart({ symbol, trades, orders }: PriceChartProps) {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const chartRef = useRef<IChartApi | null>(null);
     const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+    const priceLinesRef = useRef<Map<string, IPriceLine>>(new Map());
 
     // Initialize chart
     useEffect(() => {
@@ -146,6 +156,59 @@ export function PriceChart({ symbol, trades }: PriceChartProps) {
 
         candleSeriesRef.current.setData(chartData);
     }, [trades]);
+
+    // Update price lines when orders change
+    useEffect(() => {
+        if (!candleSeriesRef.current) return;
+
+        const activeIds = new Set<string>();
+
+        // Update or create lines for active orders
+        orders.forEach((order) => {
+            activeIds.add(order.id);
+            const price = formatPrice(order.price);
+            const color = order.side === 'BUY' ? '#10b981' : '#ef4444';
+            const title = `${order.side} ${formatQty(order.qty)}`;
+
+            if (priceLinesRef.current.has(order.id)) {
+                // Update existing line
+                const line = priceLinesRef.current.get(order.id)!;
+                line.applyOptions({
+                    price,
+                    color,
+                    title,
+                });
+            } else {
+                // Create new line
+                const line = candleSeriesRef.current!.createPriceLine({
+                    price,
+                    color,
+                    lineWidth: 1,
+                    lineStyle: 2, // Dashed
+                    axisLabelVisible: true,
+                    title,
+                });
+                priceLinesRef.current.set(order.id, line);
+            }
+        });
+
+        // Remove lines for closed/cancelled orders
+        const linesToRemove: string[] = [];
+        priceLinesRef.current.forEach((_, id) => {
+            if (!activeIds.has(id)) {
+                linesToRemove.push(id);
+            }
+        });
+
+        linesToRemove.forEach((id) => {
+            const line = priceLinesRef.current.get(id);
+            if (line && candleSeriesRef.current) {
+                candleSeriesRef.current.removePriceLine(line);
+                priceLinesRef.current.delete(id);
+            }
+        });
+
+    }, [orders]);
 
     return (
         <div className="card wide-card">
