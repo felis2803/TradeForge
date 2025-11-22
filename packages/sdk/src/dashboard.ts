@@ -63,18 +63,37 @@ export function createDashboardServer(
   const clients = new Set<WebSocket>();
   const bots = new Map<string, BotData>();
 
-  // Load HTML dashboard
-  const dashboardHtml = readFileSync(
-    join(__dirname, 'dashboard.html'),
-    'utf-8',
-  );
+  // Load dashboard files from React build
+  const dashboardDir = join(__dirname, '..', 'dist', 'dashboard');
 
-  // Create HTTP server
+  // Create HTTP server to serve React build
   const httpServer: HttpServer = createServer((req, res) => {
-    if (req.url === '/' || req.url === '/index.html') {
+    const url = req.url || '/';
+    let filePath: string;
+
+    // Route index.html for root path
+    if (url === '/' || url === '/index.html') {
+      filePath = join(dashboardDir, 'index.html');
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(dashboardHtml);
+    } else if (url.startsWith('/assets/')) {
+      // Serve assets (JS, CSS, etc.)
+      filePath = join(dashboardDir, url);
+      const ext = url.split('.').pop();
+      const contentType = ext === 'js' ? 'application/javascript' :
+        ext === 'css' ? 'text/css' :
+          ext === 'map' ? 'application/json' :
+            'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': contentType });
     } else {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
+
+    try {
+      const content = readFileSync(filePath);
+      res.end(content);
+    } catch (err) {
       res.writeHead(404);
       res.end('Not found');
     }

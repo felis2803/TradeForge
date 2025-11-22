@@ -146,8 +146,8 @@ const meanReversionBot = runBot({
   onOrderFill: (fill, ctx) => {
     console.log(
       `[BTC Mean Reversion] 📊 Fill: ${fill.side} ${formatBase(fill.qty)} BTC @ $${formatPrice(fill.price)} | ` +
-        `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} BTC | ` +
-        `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
+      `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} BTC | ` +
+      `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
     );
   },
 });
@@ -242,8 +242,8 @@ const momentumBot = runBot({
   onOrderFill: (fill, ctx) => {
     console.log(
       `[ETH Momentum] 📊 Fill: ${fill.side} ${formatBase(fill.qty)} ETH @ $${formatPrice(fill.price)} | ` +
-        `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} ETH | ` +
-        `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
+      `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} ETH | ` +
+      `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
     );
   },
 });
@@ -323,8 +323,8 @@ const marketMakerBot = runBot({
   onOrderFill: (fill, ctx) => {
     console.log(
       `[SOL Market Maker] 💰 Fill: ${fill.side} ${formatBase(fill.qty)} SOL @ $${formatPrice(fill.price)} | ` +
-        `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} SOL | ` +
-        `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
+      `Balance: $${formatQuote(ctx.balance)} | Position: ${formatBase(ctx.position)} SOL | ` +
+      `P/L: $${formatQuote(ctx.unrealizedPnL)}`,
     );
 
     // Clear active order IDs on fill

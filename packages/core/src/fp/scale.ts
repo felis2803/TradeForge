@@ -2,6 +2,8 @@ import { Scale, SymbolId, SymbolScaleMap } from '../types/index.js';
 
 export const DEFAULT_SCALES: SymbolScaleMap = {
   BTCUSDT: { priceScale: 5, qtyScale: 6 },
+  ETHUSDT: { priceScale: 5, qtyScale: 6 },
+  SOLUSDT: { priceScale: 5, qtyScale: 6 },
 };
 
 export function getScaleFor(
