@@ -51,6 +51,31 @@ interface DepthRow {
   size: number;
 }
 
+const ORDERBOOK_DEPTH = 12;
+
+function aggregateSide(
+  levels: DepthRow[],
+  side: 'bids' | 'asks',
+  depthLimit = ORDERBOOK_DEPTH,
+): { levels: DepthRow[]; uniqueLevels: number } {
+  const buckets = new Map<string, number>();
+
+  for (const { price, size } of levels) {
+    if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) continue;
+    const priceKey = price.toFixed(3);
+    const nextSize = (buckets.get(priceKey) ?? 0) + size;
+    buckets.set(priceKey, nextSize);
+  }
+
+  const sorted = Array.from(buckets.entries())
+    .map(([price, size]) => ({ price: Number(price), size: Number(size.toFixed(3)) }))
+    .sort((left, right) =>
+      side === 'bids' ? right.price - left.price : left.price - right.price,
+    );
+
+  return { levels: sorted.slice(0, depthLimit), uniqueLevels: sorted.length };
+}
+
 interface OrderBookSnapshot {
   bids: DepthRow[];
   asks: DepthRow[];
@@ -515,6 +540,22 @@ export default function ManualTrading(): JSX.Element {
     });
   };
 
+  const normalizedOrderBook = useMemo(
+    () => {
+      const bids = aggregateSide(orderBook.bids, 'bids');
+      const asks = aggregateSide(orderBook.asks, 'asks');
+
+      return {
+        bids: bids.levels,
+        asks: asks.levels,
+        truncated:
+          bids.uniqueLevels > ORDERBOOK_DEPTH || asks.uniqueLevels > ORDERBOOK_DEPTH,
+        totalLevels: bids.uniqueLevels + asks.uniqueLevels,
+      };
+    },
+    [orderBook],
+  );
+
   const totalExposure = useMemo(
     () =>
       positions.reduce(
@@ -527,7 +568,9 @@ export default function ManualTrading(): JSX.Element {
   const exposurePct =
     balance > 0 ? Math.min((totalExposure / balance) * 100, 999) : 0;
   const hasOrderBook =
-    orderBook.bids.length > 0 && orderBook.asks.length > 0 && !dataUnavailable;
+    normalizedOrderBook.bids.length > 0 &&
+    normalizedOrderBook.asks.length > 0 &&
+    !dataUnavailable;
   const hasTrades = trades.length > 0 && !dataUnavailable;
   const hasChart = syntheticChart.length > 0 && !dataUnavailable;
 
@@ -853,7 +896,7 @@ export default function ManualTrading(): JSX.Element {
                     <p className="text-xs uppercase tracking-wide text-emerald-300">
                       Bids
                     </p>
-                    {orderBook.bids.map((row) => (
+                    {normalizedOrderBook.bids.map((row) => (
                       <div
                         key={`bid-${row.price}`}
                         className="flex items-center justify-between rounded border border-slate-800 bg-emerald-500/5 px-3 py-1.5 text-emerald-100"
@@ -869,7 +912,7 @@ export default function ManualTrading(): JSX.Element {
                     <p className="text-xs uppercase tracking-wide text-red-300">
                       Asks
                     </p>
-                    {orderBook.asks.map((row) => (
+                    {normalizedOrderBook.asks.map((row) => (
                       <div
                         key={`ask-${row.price}`}
                         className="flex items-center justify-between rounded border border-slate-800 bg-red-500/5 px-3 py-1.5 text-red-100"
@@ -881,6 +924,11 @@ export default function ManualTrading(): JSX.Element {
                       </div>
                     ))}
                   </div>
+                  {normalizedOrderBook.truncated ? (
+                    <p className="col-span-2 text-xs text-slate-400">
+                      Показаны топ-{ORDERBOOK_DEPTH} уровней (агрегация по цене, всего {normalizedOrderBook.totalLevels}).
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <div className="rounded border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-400">
