@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 const exchanges = ['Binance', 'Bybit', 'OKX', 'Bitget'];
 const instruments = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'];
@@ -23,8 +23,8 @@ interface Position {
 export default function ManualTrading(): JSX.Element {
   const [selectedExchange, setSelectedExchange] = useState(exchanges[0]);
   const [dataMode, setDataMode] = useState<'history' | 'realtime'>('history');
-  const [periodStart, setPeriodStart] = useState('2024-05-01');
-  const [periodEnd, setPeriodEnd] = useState('2024-05-15');
+  const [periodStart, setPeriodStart] = useState('2024-05-01T09:00');
+  const [periodEnd, setPeriodEnd] = useState('2024-05-15T18:00');
   const [playbackSpeed, setPlaybackSpeed] = useState(playbackSpeeds[2]);
   const [balance, setBalance] = useState(10000);
   const [selectedInstrument, setSelectedInstrument] = useState(instruments[0]);
@@ -54,6 +54,56 @@ export default function ManualTrading(): JSX.Element {
     { instrument: 'SOL/USDT', size: 120, avgPrice: 158, liqPrice: 96 },
   ]);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('manual-trading:connection');
+    if (!saved) return;
+
+    try {
+      const parsed = JSON.parse(saved) as {
+        selectedExchange?: string;
+        dataMode?: 'history' | 'realtime';
+        periodStart?: string;
+        periodEnd?: string;
+        playbackSpeed?: string;
+        balance?: number;
+      };
+
+      if (parsed.selectedExchange && exchanges.includes(parsed.selectedExchange)) {
+        setSelectedExchange(parsed.selectedExchange);
+      }
+      if (parsed.dataMode === 'history' || parsed.dataMode === 'realtime') {
+        setDataMode(parsed.dataMode);
+      }
+      if (parsed.periodStart) {
+        setPeriodStart(parsed.periodStart);
+      }
+      if (parsed.periodEnd) {
+        setPeriodEnd(parsed.periodEnd);
+      }
+      if (parsed.playbackSpeed && playbackSpeeds.includes(parsed.playbackSpeed)) {
+        setPlaybackSpeed(parsed.playbackSpeed);
+      }
+      if (typeof parsed.balance === 'number' && parsed.balance > 0) {
+        setBalance(parsed.balance);
+      }
+    } catch (error) {
+      console.warn('Не удалось восстановить настройки подключения', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const payload = {
+      selectedExchange,
+      dataMode,
+      periodStart,
+      periodEnd,
+      playbackSpeed,
+      balance,
+    };
+    localStorage.setItem('manual-trading:connection', JSON.stringify(payload));
+  }, [balance, dataMode, periodEnd, periodStart, playbackSpeed, selectedExchange]);
 
   const trades = useMemo(
     () => [
@@ -96,12 +146,45 @@ export default function ManualTrading(): JSX.Element {
   );
 
   const handleConnect = () => {
-    const modeLabel =
-      dataMode === 'history'
-        ? `история ${periodStart} → ${periodEnd} @ ${playbackSpeed}`
-        : 'realtime';
+    setConnectionError(null);
+
+    if (balance <= 0) {
+      setConnectionError('Введите положительный стартовый баланс');
+      return;
+    }
+
+    if (dataMode === 'history') {
+      if (!periodStart || !periodEnd) {
+        setConnectionError('Укажите дату и время начала и окончания периода');
+        return;
+      }
+
+      const start = new Date(periodStart);
+      const end = new Date(periodEnd);
+
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        setConnectionError('Некорректный формат периода');
+        return;
+      }
+
+      if (start >= end) {
+        setConnectionError('Дата начала должна быть раньше даты окончания');
+        return;
+      }
+
+      if (!playbackSpeed) {
+        setConnectionError('Выберите скорость воспроизведения');
+        return;
+      }
+
+      setConnectionMessage(
+        `Историческое воспроизведение: ${start.toLocaleString('ru-RU')} → ${end.toLocaleString('ru-RU')} @ ${playbackSpeed}. Стартовый баланс: ${balance.toLocaleString('ru-RU')} USDT`,
+      );
+      return;
+    }
+
     setConnectionMessage(
-      `Подключение к ${selectedExchange}, режим данных: ${modeLabel}, баланс: ${balance.toLocaleString('ru-RU')} USDT`,
+      `Realtime поток на ${selectedExchange}. Баланс и позиции инициализированы на ${balance.toLocaleString('ru-RU')} USDT`,
     );
   };
 
@@ -142,6 +225,13 @@ export default function ManualTrading(): JSX.Element {
       ];
     });
   };
+
+  const totalExposure = useMemo(
+    () => positions.reduce((sum, position) => sum + position.size * position.avgPrice, 0),
+    [positions],
+  );
+
+  const exposurePct = balance > 0 ? Math.min((totalExposure / balance) * 100, 999) : 0;
 
   return (
     <div className="space-y-6">
@@ -215,7 +305,7 @@ export default function ManualTrading(): JSX.Element {
             <label className="space-y-2">
               <span className="text-sm text-slate-300">Период от</span>
               <input
-                type="date"
+                type="datetime-local"
                 value={periodStart}
                 onChange={(event) => setPeriodStart(event.target.value)}
                 className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
@@ -224,7 +314,7 @@ export default function ManualTrading(): JSX.Element {
             <label className="space-y-2">
               <span className="text-sm text-slate-300">Период до</span>
               <input
-                type="date"
+                type="datetime-local"
                 value={periodEnd}
                 onChange={(event) => setPeriodEnd(event.target.value)}
                 className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
@@ -246,11 +336,53 @@ export default function ManualTrading(): JSX.Element {
             </label>
           </div>
         )}
+        {connectionError && (
+          <div className="rounded-md border border-red-600/50 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            {connectionError}
+          </div>
+        )}
         {connectionMessage && (
           <div className="rounded-md border border-emerald-600/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
             {connectionMessage}
           </div>
         )}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 shadow-lg shadow-slate-900/30">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Баланс</p>
+          <p className="text-2xl font-semibold text-emerald-200">
+            {balance.toLocaleString('ru-RU')} <span className="text-sm text-slate-400">USDT</span>
+          </p>
+          <p className="text-xs text-slate-400">Задаётся на экране подключения</p>
+        </div>
+        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 shadow-lg shadow-slate-900/30">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Экспозиция позиций</p>
+          <p className="text-xl font-semibold text-slate-50">
+            {totalExposure.toLocaleString('ru-RU')} <span className="text-sm text-slate-400">USDT</span>
+          </p>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-300"
+              style={{ width: `${Math.min(100, exposurePct).toFixed(1)}%` }}
+            />
+          </div>
+          <p className="mt-1 text-xs text-slate-400">{exposurePct.toFixed(1)}% от стартового баланса</p>
+        </div>
+        <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 shadow-lg shadow-slate-900/30">
+          <p className="text-xs uppercase tracking-wide text-slate-400">Режим данных</p>
+          <p className="text-lg font-semibold text-slate-50">
+            {dataMode === 'history' ? 'Исторические' : 'Realtime'}
+          </p>
+          {dataMode === 'history' ? (
+            <p className="text-sm text-slate-300">
+              {new Date(periodStart).toLocaleString('ru-RU')} → {new Date(periodEnd).toLocaleString('ru-RU')} @{' '}
+              {playbackSpeed}
+            </p>
+          ) : (
+            <p className="text-sm text-slate-300">Параметры периода недоступны в режиме Realtime</p>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
@@ -444,16 +576,25 @@ export default function ManualTrading(): JSX.Element {
                 key={position.instrument}
                 className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
               >
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">{position.instrument}</p>
-                  <p className="text-slate-100">
-                    Размер:{' '}
-                    <span className="font-semibold">{position.size}</span>
-                  </p>
-                </div>
-                <div className="text-right text-xs text-slate-300">
-                  <p>
-                    Средняя цена:{' '}
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-wide text-slate-400">{position.instrument}</p>
+                <p className="text-slate-100">
+                  Размер:{' '}
+                  <span className="font-semibold">{position.size}</span>
+                </p>
+                <p className="text-xs text-slate-400">
+                  Доля баланса:{' '}
+                  <span className="font-semibold text-emerald-200">
+                    {balance > 0
+                      ? ((position.size * position.avgPrice) / balance * 100).toFixed(2)
+                      : '0.00'}
+                    %
+                  </span>
+                </p>
+              </div>
+              <div className="text-right text-xs text-slate-300">
+                <p>
+                  Средняя цена:{' '}
                     <span className="font-semibold text-slate-100">{position.avgPrice.toLocaleString('ru-RU')}</span>
                   </p>
                   <p>
