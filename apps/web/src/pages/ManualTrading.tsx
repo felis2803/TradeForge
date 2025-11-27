@@ -1,18 +1,22 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 const exchanges = ['Binance', 'Bybit', 'OKX', 'Bitget'];
 const instruments = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'];
 const playbackSpeeds = ['0.25x', '0.5x', '1x', '2x', '4x'] as const;
 
-const playbackSpeedMultiplier: Record<(typeof playbackSpeeds)[number], number> = {
-  '0.25x': 0.25,
-  '0.5x': 0.5,
-  '1x': 1,
-  '2x': 2,
-  '4x': 4,
-};
+const playbackSpeedMultiplier: Record<(typeof playbackSpeeds)[number], number> =
+  {
+    '0.25x': 0.25,
+    '0.5x': 0.5,
+    '1x': 1,
+    '2x': 2,
+    '4x': 4,
+  };
 
-const instrumentProfiles: Record<string, { basePrice: number; volatility: number; baseVolume: number }> = {
+const instrumentProfiles: Record<
+  string,
+  { basePrice: number; volatility: number; baseVolume: number }
+> = {
   'BTC/USDT': { basePrice: 65100, volatility: 26, baseVolume: 1250 },
   'ETH/USDT': { basePrice: 2860, volatility: 9, baseVolume: 820 },
   'SOL/USDT': { basePrice: 158, volatility: 2.1, baseVolume: 640 },
@@ -37,6 +41,7 @@ interface Position {
 
 interface TradeRow {
   time: string;
+  timestamp: number;
   side: 'buy' | 'sell';
   price: number;
   size: number;
@@ -73,6 +78,30 @@ function formatTime(date: Date) {
   return date.toLocaleTimeString('ru-RU', { hour12: false });
 }
 
+function buildTradeRow({
+  timestamp,
+  side,
+  price,
+  size,
+}: {
+  timestamp: number;
+  side: TradeRow['side'];
+  price: number;
+  size: number;
+}): TradeRow {
+  return {
+    time: formatTime(new Date(timestamp)),
+    timestamp,
+    side,
+    price,
+    size,
+  };
+}
+
+function sortTrades(trades: TradeRow[]): TradeRow[] {
+  return [...trades].sort((left, right) => right.timestamp - left.timestamp);
+}
+
 function createTickerSnapshot(symbol: string): TickerSnapshot {
   const { basePrice, baseVolume } = getProfile(symbol);
   return {
@@ -87,17 +116,21 @@ function createTickerSnapshot(symbol: string): TickerSnapshot {
 function seedTrades(symbol: string): TradeRow[] {
   const profile = getProfile(symbol);
   const now = Date.now();
-  return Array.from({ length: 5 }).map((_, index) => {
+  const trades = Array.from({ length: 5 }).map((_, index) => {
     const side = index % 2 === 0 ? 'buy' : 'sell';
     const price =
-      profile.basePrice + (index - 2) * profile.volatility * (side === 'buy' ? 1.5 : -1.2);
-    return {
-      time: formatTime(new Date(now - index * 2100)),
+      profile.basePrice +
+      (index - 2) * profile.volatility * (side === 'buy' ? 1.5 : -1.2);
+    const timestamp = now - index * 2100;
+    return buildTradeRow({
+      timestamp,
       side: side as TradeRow['side'],
       price: Math.max(1, Number(price.toFixed(3))),
       size: Number((Math.random() * 0.8 + 0.05).toFixed(3)),
-    };
+    });
   });
+
+  return sortTrades(trades);
 }
 
 function seedOrderBook(symbol: string): OrderBookSnapshot {
@@ -118,7 +151,9 @@ function seedChart(symbol: string): ChartPoint[] {
   const { basePrice, volatility } = getProfile(symbol);
   const base = basePrice * 0.98;
   return Array.from({ length: 5 }).map((_, idx) => ({
-    price: Math.round(base + idx * volatility * 4 + (Math.random() - 0.5) * volatility * 8),
+    price: Math.round(
+      base + idx * volatility * 4 + (Math.random() - 0.5) * volatility * 8,
+    ),
     label: `${11 + Math.floor(idx / 2)}:${(58 + (idx % 2) * 2).toString().padStart(2, '0')}`,
   }));
 }
@@ -130,7 +165,8 @@ function mutateTicker(
 ): TickerSnapshot {
   const profile = getProfile(symbol);
   const driftMultiplier = dataMode === 'realtime' ? 1.2 : 2.1;
-  const randomDrift = (Math.random() - 0.5) * profile.volatility * driftMultiplier;
+  const randomDrift =
+    (Math.random() - 0.5) * profile.volatility * driftMultiplier;
   const nextLast = Math.max(
     profile.basePrice * 0.35,
     (previous?.last ?? profile.basePrice) + randomDrift,
@@ -142,7 +178,9 @@ function mutateTicker(
 
   return {
     last: Number(nextLast.toFixed(3)),
-    change: Number((((nextLast - profile.basePrice) / profile.basePrice) * 100).toFixed(2)),
+    change: Number(
+      (((nextLast - profile.basePrice) / profile.basePrice) * 100).toFixed(2),
+    ),
     volume: Number((baseVolume + volumeStep).toFixed(1)),
     high: Number(high.toFixed(3)),
     low: Number(low.toFixed(3)),
@@ -157,19 +195,25 @@ function mutateTrades(
 ): TradeRow[] {
   const profile = getProfile(symbol);
   const referencePrice = priceHint ?? previous[0]?.price ?? profile.basePrice;
-  const volatilityKick = (Math.random() - 0.5) * profile.volatility * (dataMode === 'realtime' ? 2.4 : 3.8);
+  const volatilityKick =
+    (Math.random() - 0.5) *
+    profile.volatility *
+    (dataMode === 'realtime' ? 2.4 : 3.8);
   const price = Math.max(1, referencePrice + volatilityKick);
   const side = Math.random() > 0.45 ? 'buy' : 'sell';
-  const size = Number((Math.random() * (dataMode === 'realtime' ? 1.5 : 1.1) + 0.05).toFixed(3));
+  const size = Number(
+    (Math.random() * (dataMode === 'realtime' ? 1.5 : 1.1) + 0.05).toFixed(3),
+  );
+  const timestamp = Date.now();
 
-  const nextTrade: TradeRow = {
-    time: formatTime(new Date()),
+  const nextTrade = buildTradeRow({
+    timestamp,
     side,
     price: Number(price.toFixed(3)),
     size,
-  };
+  });
 
-  return [nextTrade, ...previous].slice(0, 12);
+  return sortTrades([nextTrade, ...previous]).slice(0, 12);
 }
 
 function mutateOrderBook(
@@ -178,10 +222,12 @@ function mutateOrderBook(
   midPriceHint?: number,
 ): OrderBookSnapshot {
   const profile = getProfile(symbol);
-  const midPrice = midPriceHint ?? (previous.bids[0]?.price ?? profile.basePrice);
+  const midPrice = midPriceHint ?? previous.bids[0]?.price ?? profile.basePrice;
   const spread = Math.max(1, profile.volatility * 0.7);
 
-  const bids = (previous.bids.length ? previous.bids : seedOrderBook(symbol).bids).map((row, idx) => {
+  const bids = (
+    previous.bids.length ? previous.bids : seedOrderBook(symbol).bids
+  ).map((row, idx) => {
     const delta = Math.random() * spread;
     return {
       price: Number((midPrice - (idx + 1) * spread - delta).toFixed(3)),
@@ -189,7 +235,9 @@ function mutateOrderBook(
     };
   });
 
-  const asks = (previous.asks.length ? previous.asks : seedOrderBook(symbol).asks).map((row, idx) => {
+  const asks = (
+    previous.asks.length ? previous.asks : seedOrderBook(symbol).asks
+  ).map((row, idx) => {
     const delta = Math.random() * spread;
     return {
       price: Number((midPrice + (idx + 1) * spread + delta).toFixed(3)),
@@ -200,10 +248,21 @@ function mutateOrderBook(
   return { bids, asks };
 }
 
-function mutateChart(previous: ChartPoint[], symbol: string, priceHint?: number): ChartPoint[] {
+function mutateChart(
+  previous: ChartPoint[],
+  symbol: string,
+  priceHint?: number,
+): ChartPoint[] {
   const fallback = previous.length ? previous : seedChart(symbol);
-  const nextPrice = Math.round(priceHint ?? fallback[fallback.length - 1]?.price ?? getProfile(symbol).basePrice);
-  const nextPoint: ChartPoint = { price: nextPrice, label: formatTime(new Date()) };
+  const nextPrice = Math.round(
+    priceHint ??
+      fallback[fallback.length - 1]?.price ??
+      getProfile(symbol).basePrice,
+  );
+  const nextPoint: ChartPoint = {
+    price: nextPrice,
+    label: formatTime(new Date()),
+  };
   return [...fallback.slice(-7), nextPoint];
 }
 
@@ -237,7 +296,9 @@ export default function ManualTrading(): JSX.Element {
   const [dataMode, setDataMode] = useState<'history' | 'realtime'>('history');
   const [periodStart, setPeriodStart] = useState('2024-05-01T09:00');
   const [periodEnd, setPeriodEnd] = useState('2024-05-15T18:00');
-  const [playbackSpeed, setPlaybackSpeed] = useState<(typeof playbackSpeeds)[number]>(playbackSpeeds[2]);
+  const [playbackSpeed, setPlaybackSpeed] = useState<
+    (typeof playbackSpeeds)[number]
+  >(playbackSpeeds[2]);
   const [balance, setBalance] = useState(10000);
   const [selectedInstrument, setSelectedInstrument] = useState(instruments[0]);
   const [orderType, setOrderType] = useState('limit');
@@ -267,12 +328,32 @@ export default function ManualTrading(): JSX.Element {
   ]);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
   const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [ticker, setTicker] = useState<TickerSnapshot>(() => createTickerSnapshot(instruments[0]));
-  const [trades, setTrades] = useState<TradeRow[]>(() => seedTrades(instruments[0]));
-  const [orderBook, setOrderBook] = useState<OrderBookSnapshot>(() => seedOrderBook(instruments[0]));
-  const [syntheticChart, setSyntheticChart] = useState<ChartPoint[]>(() => seedChart(instruments[0]));
+  const [isPaused, setIsPaused] = useState(false);
+  const [ticker, setTicker] = useState<TickerSnapshot>(() =>
+    createTickerSnapshot(instruments[0]),
+  );
+  const [trades, setTrades] = useState<TradeRow[]>(() =>
+    seedTrades(instruments[0]),
+  );
+  const [orderBook, setOrderBook] = useState<OrderBookSnapshot>(() =>
+    seedOrderBook(instruments[0]),
+  );
+  const [syntheticChart, setSyntheticChart] = useState<ChartPoint[]>(() =>
+    seedChart(instruments[0]),
+  );
   const [dataUnavailable, setDataUnavailable] = useState(false);
   const [lastUpdateAt, setLastUpdateAt] = useState<Date | null>(null);
+  const latestPriceRef = useRef<number>(ticker.last);
+  const resetStreams = (instrument = selectedInstrument) => {
+    const nextTicker = createTickerSnapshot(instrument);
+    latestPriceRef.current = nextTicker.last;
+    setTicker(nextTicker);
+    setTrades(seedTrades(instrument));
+    setOrderBook(seedOrderBook(instrument));
+    setSyntheticChart(seedChart(instrument));
+    setDataUnavailable(false);
+    setLastUpdateAt(null);
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem('manual-trading:connection');
@@ -288,7 +369,10 @@ export default function ManualTrading(): JSX.Element {
         balance?: number;
       };
 
-      if (parsed.selectedExchange && exchanges.includes(parsed.selectedExchange)) {
+      if (
+        parsed.selectedExchange &&
+        exchanges.includes(parsed.selectedExchange)
+      ) {
         setSelectedExchange(parsed.selectedExchange);
       }
       if (parsed.dataMode === 'history' || parsed.dataMode === 'realtime') {
@@ -300,7 +384,10 @@ export default function ManualTrading(): JSX.Element {
       if (parsed.periodEnd) {
         setPeriodEnd(parsed.periodEnd);
       }
-      if (parsed.playbackSpeed && playbackSpeeds.includes(parsed.playbackSpeed)) {
+      if (
+        parsed.playbackSpeed &&
+        playbackSpeeds.includes(parsed.playbackSpeed)
+      ) {
         setPlaybackSpeed(parsed.playbackSpeed);
       }
       if (typeof parsed.balance === 'number' && parsed.balance > 0) {
@@ -321,43 +408,68 @@ export default function ManualTrading(): JSX.Element {
       balance,
     };
     localStorage.setItem('manual-trading:connection', JSON.stringify(payload));
-  }, [balance, dataMode, periodEnd, periodStart, playbackSpeed, selectedExchange]);
+  }, [
+    balance,
+    dataMode,
+    periodEnd,
+    periodStart,
+    playbackSpeed,
+    selectedExchange,
+  ]);
 
   useEffect(() => {
-    setTicker(createTickerSnapshot(selectedInstrument));
-    setTrades(seedTrades(selectedInstrument));
-    setOrderBook(seedOrderBook(selectedInstrument));
-    setSyntheticChart(seedChart(selectedInstrument));
-    setDataUnavailable(false);
-    setLastUpdateAt(null);
+    setIsPaused(false);
+    resetStreams();
   }, [selectedInstrument]);
 
+  useEffect(() => {
+    latestPriceRef.current = ticker.last;
+  }, [ticker.last]);
+
   const updateIntervalMs = useMemo(
-    () => computeUpdateInterval(dataMode, playbackSpeed, periodStart, periodEnd),
+    () =>
+      computeUpdateInterval(dataMode, playbackSpeed, periodStart, periodEnd),
     [dataMode, periodEnd, periodStart, playbackSpeed],
   );
 
   useEffect(() => {
-    if (dataUnavailable) return;
+    if (dataUnavailable || isPaused) return;
 
     const intervalId = window.setInterval(() => {
-      let priceForChildren = ticker.last;
+      let priceForChildren = latestPriceRef.current;
+
       setTicker((prev) => {
         const next = mutateTicker(prev, selectedInstrument, dataMode);
         priceForChildren = next.last;
         return next;
       });
-      setTrades((prev) => mutateTrades(prev, selectedInstrument, dataMode, priceForChildren));
-      setOrderBook((prev) => mutateOrderBook(prev, selectedInstrument, priceForChildren));
-      setSyntheticChart((prev) => mutateChart(prev, selectedInstrument, priceForChildren));
+
+      latestPriceRef.current = priceForChildren;
+
+      setTrades((prev) =>
+        mutateTrades(prev, selectedInstrument, dataMode, priceForChildren),
+      );
+      setOrderBook((prev) =>
+        mutateOrderBook(prev, selectedInstrument, priceForChildren),
+      );
+      setSyntheticChart((prev) =>
+        mutateChart(prev, selectedInstrument, priceForChildren),
+      );
       setLastUpdateAt(new Date());
     }, updateIntervalMs);
 
     return () => clearInterval(intervalId);
-  }, [dataUnavailable, dataMode, selectedInstrument, ticker.last, updateIntervalMs]);
+  }, [
+    dataUnavailable,
+    dataMode,
+    isPaused,
+    selectedInstrument,
+    updateIntervalMs,
+  ]);
 
   const handleConnect = () => {
     setConnectionError(null);
+    setIsPaused(false);
 
     if (balance <= 0) {
       setConnectionError('Введите положительный стартовый баланс');
@@ -399,6 +511,27 @@ export default function ManualTrading(): JSX.Element {
     );
   };
 
+  const handleResumeStream = () => {
+    setIsPaused(false);
+    resetStreams();
+    setConnectionMessage('Поток данных восстановлен');
+    setLastUpdateAt(new Date());
+  };
+
+  const handleTogglePause = () => {
+    setIsPaused((previous) => {
+      const next = !previous;
+      if (next) {
+        setConnectionMessage('Воспроизведение поставлено на паузу');
+      } else {
+        resetStreams();
+        setConnectionMessage('Воспроизведение возобновлено');
+        setLastUpdateAt(new Date());
+      }
+      return next;
+    });
+  };
+
   const handleSubmitOrder = (event: FormEvent) => {
     event.preventDefault();
     const id = `ord-${Date.now()}`;
@@ -406,7 +539,12 @@ export default function ManualTrading(): JSX.Element {
       {
         id,
         instrument: selectedInstrument,
-        type: orderType === 'market' ? 'Market' : orderType === 'stop' ? 'Stop' : 'Limit',
+        type:
+          orderType === 'market'
+            ? 'Market'
+            : orderType === 'stop'
+              ? 'Stop'
+              : 'Limit',
         size: orderSize,
         price: orderType === 'market' ? undefined : orderPrice,
         status: 'active',
@@ -414,7 +552,9 @@ export default function ManualTrading(): JSX.Element {
       ...prev,
     ]);
     setPositions((prev) => {
-      const existing = prev.find((pos) => pos.instrument === selectedInstrument);
+      const existing = prev.find(
+        (pos) => pos.instrument === selectedInstrument,
+      );
       if (existing) {
         return prev.map((pos) =>
           pos.instrument === selectedInstrument
@@ -431,19 +571,30 @@ export default function ManualTrading(): JSX.Element {
         );
       }
       return [
-        { instrument: selectedInstrument, size: orderSize, avgPrice: orderPrice, liqPrice: orderPrice * 0.6 },
+        {
+          instrument: selectedInstrument,
+          size: orderSize,
+          avgPrice: orderPrice,
+          liqPrice: orderPrice * 0.6,
+        },
         ...prev,
       ];
     });
   };
 
   const totalExposure = useMemo(
-    () => positions.reduce((sum, position) => sum + position.size * position.avgPrice, 0),
+    () =>
+      positions.reduce(
+        (sum, position) => sum + position.size * position.avgPrice,
+        0,
+      ),
     [positions],
   );
 
-  const exposurePct = balance > 0 ? Math.min((totalExposure / balance) * 100, 999) : 0;
-  const hasOrderBook = orderBook.bids.length > 0 && orderBook.asks.length > 0 && !dataUnavailable;
+  const exposurePct =
+    balance > 0 ? Math.min((totalExposure / balance) * 100, 999) : 0;
+  const hasOrderBook =
+    orderBook.bids.length > 0 && orderBook.asks.length > 0 && !dataUnavailable;
   const hasTrades = trades.length > 0 && !dataUnavailable;
   const hasChart = syntheticChart.length > 0 && !dataUnavailable;
 
@@ -452,8 +603,12 @@ export default function ManualTrading(): JSX.Element {
       <div className="flex flex-col gap-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5 shadow-lg shadow-slate-900/40">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-sm uppercase tracking-wide text-slate-400">Режим</p>
-            <h2 className="text-xl font-semibold text-slate-50">Ручная торговля</h2>
+            <p className="text-sm uppercase tracking-wide text-slate-400">
+              Режим
+            </p>
+            <h2 className="text-xl font-semibold text-slate-50">
+              Ручная торговля
+            </h2>
           </div>
           <span className="rounded-full border border-emerald-500/60 px-3 py-1 text-xs font-semibold uppercase text-emerald-300">
             Beta
@@ -494,7 +649,9 @@ export default function ManualTrading(): JSX.Element {
             </div>
           </label>
           <label className="space-y-2">
-            <span className="text-sm text-slate-300">Стартовый баланс (USDT)</span>
+            <span className="text-sm text-slate-300">
+              Стартовый баланс (USDT)
+            </span>
             <input
               type="number"
               min={100}
@@ -522,18 +679,21 @@ export default function ManualTrading(): JSX.Element {
             <button
               type="button"
               disabled={!dataUnavailable}
-              onClick={() => {
-                setDataUnavailable(false);
-                setTicker(createTickerSnapshot(selectedInstrument));
-                setTrades(seedTrades(selectedInstrument));
-                setOrderBook(seedOrderBook(selectedInstrument));
-                setSyntheticChart(seedChart(selectedInstrument));
-                setConnectionMessage('Поток данных восстановлен');
-                setLastUpdateAt(new Date());
-              }}
+              onClick={handleResumeStream}
               className="rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Вернуть поток
+            </button>
+            <button
+              type="button"
+              onClick={handleTogglePause}
+              className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                isPaused
+                  ? 'border-emerald-500/70 text-emerald-200 hover:border-emerald-400'
+                  : 'border-slate-700 text-slate-200 hover:border-emerald-400 hover:text-emerald-200'
+              }`}
+            >
+              {isPaused ? 'Возобновить' : 'Пауза'}
             </button>
           </div>
         </div>
@@ -558,10 +718,16 @@ export default function ManualTrading(): JSX.Element {
               />
             </label>
             <label className="space-y-2">
-              <span className="text-sm text-slate-300">Скорость воспроизведения</span>
+              <span className="text-sm text-slate-300">
+                Скорость воспроизведения
+              </span>
               <select
                 value={playbackSpeed}
-                onChange={(event) => setPlaybackSpeed(event.target.value as (typeof playbackSpeeds)[number])}
+                onChange={(event) =>
+                  setPlaybackSpeed(
+                    event.target.value as (typeof playbackSpeeds)[number],
+                  )
+                }
                 className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
               >
                 {playbackSpeeds.map((speed) => (
@@ -592,16 +758,24 @@ export default function ManualTrading(): JSX.Element {
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 shadow-lg shadow-slate-900/30">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Баланс</p>
-          <p className="text-2xl font-semibold text-emerald-200">
-            {balance.toLocaleString('ru-RU')} <span className="text-sm text-slate-400">USDT</span>
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Баланс
           </p>
-          <p className="text-xs text-slate-400">Задаётся на экране подключения</p>
+          <p className="text-2xl font-semibold text-emerald-200">
+            {balance.toLocaleString('ru-RU')}{' '}
+            <span className="text-sm text-slate-400">USDT</span>
+          </p>
+          <p className="text-xs text-slate-400">
+            Задаётся на экране подключения
+          </p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 shadow-lg shadow-slate-900/30">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Экспозиция позиций</p>
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Экспозиция позиций
+          </p>
           <p className="text-xl font-semibold text-slate-50">
-            {totalExposure.toLocaleString('ru-RU')} <span className="text-sm text-slate-400">USDT</span>
+            {totalExposure.toLocaleString('ru-RU')}{' '}
+            <span className="text-sm text-slate-400">USDT</span>
           </p>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
             <div
@@ -609,23 +783,32 @@ export default function ManualTrading(): JSX.Element {
               style={{ width: `${Math.min(100, exposurePct).toFixed(1)}%` }}
             />
           </div>
-          <p className="mt-1 text-xs text-slate-400">{exposurePct.toFixed(1)}% от стартового баланса</p>
+          <p className="mt-1 text-xs text-slate-400">
+            {exposurePct.toFixed(1)}% от стартового баланса
+          </p>
         </div>
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-4 shadow-lg shadow-slate-900/30">
-          <p className="text-xs uppercase tracking-wide text-slate-400">Режим данных</p>
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            Режим данных
+          </p>
           <p className="text-lg font-semibold text-slate-50">
             {dataMode === 'history' ? 'Исторические' : 'Realtime'}
           </p>
           {dataMode === 'history' ? (
             <p className="text-sm text-slate-300">
-              {new Date(periodStart).toLocaleString('ru-RU')} → {new Date(periodEnd).toLocaleString('ru-RU')} @ {playbackSpeed}
+              {new Date(periodStart).toLocaleString('ru-RU')} →{' '}
+              {new Date(periodEnd).toLocaleString('ru-RU')} @ {playbackSpeed}
             </p>
           ) : (
-            <p className="text-sm text-slate-300">Параметры периода недоступны в режиме Realtime</p>
+            <p className="text-sm text-slate-300">
+              Параметры периода недоступны в режиме Realtime
+            </p>
           )}
           <p className="mt-2 text-xs text-slate-400">
             Частота обновления: ~{updateIntervalMs} мс ·{' '}
-            {lastUpdateAt ? `последнее ${formatTime(lastUpdateAt)}` : 'ожидание обновлений'}
+            {lastUpdateAt
+              ? `последнее ${formatTime(lastUpdateAt)}`
+              : 'ожидание обновлений'}
           </p>
         </div>
       </div>
@@ -634,8 +817,12 @@ export default function ManualTrading(): JSX.Element {
         <div className="xl:col-span-2 space-y-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5 shadow-lg shadow-slate-900/40">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs uppercase tracking-wide text-slate-400">Текущий инструмент</p>
-              <p className="text-2xl font-semibold text-slate-50">{selectedInstrument}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Текущий инструмент
+              </p>
+              <p className="text-2xl font-semibold text-slate-50">
+                {selectedInstrument}
+              </p>
               <p className="text-sm text-slate-400">
                 {dataUnavailable
                   ? 'Нет рыночных данных — отображаются заглушки'
@@ -646,12 +833,22 @@ export default function ManualTrading(): JSX.Element {
               <p className="text-3xl font-semibold text-emerald-200">
                 {dataUnavailable ? '—' : ticker.last.toLocaleString('ru-RU')}
               </p>
-              <p className={ticker.change >= 0 ? 'text-emerald-300' : 'text-red-300'}>
-                {dataUnavailable ? 'нет изменения' : `${ticker.change >= 0 ? '+' : ''}${ticker.change}%`}
+              <p
+                className={
+                  ticker.change >= 0 ? 'text-emerald-300' : 'text-red-300'
+                }
+              >
+                {dataUnavailable
+                  ? 'нет изменения'
+                  : `${ticker.change >= 0 ? '+' : ''}${ticker.change}%`}
               </p>
               <p className="text-xs text-slate-400">
-                Vol {dataUnavailable ? '—' : ticker.volume.toLocaleString('ru-RU')} · Hi/Lo{' '}
-                {dataUnavailable ? '—' : `${ticker.high.toLocaleString('ru-RU')} / ${ticker.low.toLocaleString('ru-RU')}`}
+                Vol{' '}
+                {dataUnavailable ? '—' : ticker.volume.toLocaleString('ru-RU')}{' '}
+                · Hi/Lo{' '}
+                {dataUnavailable
+                  ? '—'
+                  : `${ticker.high.toLocaleString('ru-RU')} / ${ticker.low.toLocaleString('ru-RU')}`}
               </p>
             </div>
           </div>
@@ -685,21 +882,32 @@ export default function ManualTrading(): JSX.Element {
                 <div className="space-y-2 text-sm">
                   {trades.map((trade) => (
                     <div
-                      key={`${trade.time}-${trade.price}-${trade.size}`}
+                      key={trade.timestamp}
                       className="flex items-center justify-between rounded border border-slate-800 bg-slate-900/60 px-3 py-2"
                     >
                       <span className="text-slate-400">{trade.time}</span>
-                      <span className={trade.side === 'buy' ? 'text-emerald-300' : 'text-red-300'}>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          trade.side === 'buy'
+                            ? 'bg-emerald-500/15 text-emerald-200'
+                            : 'bg-red-500/15 text-red-200'
+                        }`}
+                      >
                         {trade.side === 'buy' ? 'BUY' : 'SELL'}
                       </span>
-                      <span className="font-semibold text-slate-50">{trade.price.toLocaleString('ru-RU')}</span>
-                      <span className="text-slate-300">{trade.size}</span>
+                      <span className="font-semibold text-slate-50">
+                        {trade.price.toLocaleString('ru-RU')}
+                      </span>
+                      <span className="rounded-full bg-slate-800 px-2 py-0.5 text-slate-200">
+                        {trade.size}
+                      </span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="rounded border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-400">
-                  Поток сделок недоступен — показываем заглушку для проверки отказоустойчивости.
+                  Поток сделок недоступен — показываем заглушку для проверки
+                  отказоустойчивости.
                 </div>
               )}
             </div>
@@ -707,30 +915,40 @@ export default function ManualTrading(): JSX.Element {
             <div className="rounded-md border border-slate-800 bg-slate-950/60 p-4">
               <div className="mb-3 flex items-center justify-between text-sm text-slate-400">
                 <span>Ордербук</span>
-                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">L2</span>
+                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                  L2
+                </span>
               </div>
               {hasOrderBook ? (
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-wide text-emerald-300">Bids</p>
+                    <p className="text-xs uppercase tracking-wide text-emerald-300">
+                      Bids
+                    </p>
                     {orderBook.bids.map((row) => (
                       <div
                         key={`bid-${row.price}`}
                         className="flex items-center justify-between rounded border border-slate-800 bg-emerald-500/5 px-3 py-1.5 text-emerald-100"
                       >
-                        <span className="font-semibold">{row.price.toLocaleString('ru-RU')}</span>
+                        <span className="font-semibold">
+                          {row.price.toLocaleString('ru-RU')}
+                        </span>
                         <span className="text-emerald-200">{row.size}</span>
                       </div>
                     ))}
                   </div>
                   <div className="space-y-2">
-                    <p className="text-xs uppercase tracking-wide text-red-300">Asks</p>
+                    <p className="text-xs uppercase tracking-wide text-red-300">
+                      Asks
+                    </p>
                     {orderBook.asks.map((row) => (
                       <div
                         key={`ask-${row.price}`}
                         className="flex items-center justify-between rounded border border-slate-800 bg-red-500/5 px-3 py-1.5 text-red-100"
                       >
-                        <span className="font-semibold">{row.price.toLocaleString('ru-RU')}</span>
+                        <span className="font-semibold">
+                          {row.price.toLocaleString('ru-RU')}
+                        </span>
                         <span className="text-red-200">{row.size}</span>
                       </div>
                     ))}
@@ -746,7 +964,9 @@ export default function ManualTrading(): JSX.Element {
             <div className="rounded-md border border-slate-800 bg-slate-950/60 p-4">
               <div className="mb-3 flex items-center justify-between text-sm text-slate-400">
                 <span>График</span>
-                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">Preview</span>
+                <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                  Preview
+                </span>
               </div>
               {hasChart ? (
                 <div className="grid h-48 grid-cols-4 items-end gap-2">
@@ -754,16 +974,23 @@ export default function ManualTrading(): JSX.Element {
                     <div key={bar.label} className="flex flex-col items-center">
                       <div
                         className="w-full rounded-t bg-gradient-to-t from-emerald-500/30 to-emerald-300/60"
-                        style={{ height: `${Math.max(20, (bar.price % 300) / 4)}px` }}
+                        style={{
+                          height: `${Math.max(20, (bar.price % 300) / 4)}px`,
+                        }}
                       />
-                      <span className="mt-2 text-xs text-slate-400">{bar.label}</span>
-                      <span className="text-xs font-semibold text-slate-200">{bar.price}</span>
+                      <span className="mt-2 text-xs text-slate-400">
+                        {bar.label}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-200">
+                        {bar.price}
+                      </span>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="flex h-48 items-center justify-center rounded border border-slate-800 bg-slate-900/40 text-sm text-slate-400">
-                  График временно недоступен — можно проверить обработку отсутствующих данных.
+                  График временно недоступен — можно проверить обработку
+                  отсутствующих данных.
                 </div>
               )}
             </div>
@@ -772,7 +999,10 @@ export default function ManualTrading(): JSX.Element {
 
         <div className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/60 p-5 shadow-lg shadow-slate-900/40">
           <h3 className="text-lg font-semibold text-slate-50">Ордеры</h3>
-          <form onSubmit={handleSubmitOrder} className="space-y-3 rounded-md border border-slate-800 bg-slate-950/60 p-4 text-sm">
+          <form
+            onSubmit={handleSubmitOrder}
+            className="space-y-3 rounded-md border border-slate-800 bg-slate-950/60 p-4 text-sm"
+          >
             <label className="space-y-1">
               <span className="text-slate-300">Инструмент</span>
               <select
@@ -818,7 +1048,9 @@ export default function ManualTrading(): JSX.Element {
                   min={1}
                   step={1}
                   value={orderPrice}
-                  onChange={(event) => setOrderPrice(Number(event.target.value))}
+                  onChange={(event) =>
+                    setOrderPrice(Number(event.target.value))
+                  }
                   className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 focus:border-emerald-400 focus:outline-none"
                 />
               </label>
@@ -853,12 +1085,16 @@ export default function ManualTrading(): JSX.Element {
                 </div>
                 <div className="mt-1 flex items-center justify-between">
                   <div className="flex items-center gap-2 font-semibold">
-                    <span className="rounded bg-slate-800 px-2 py-1 text-xs uppercase text-slate-200">{order.type}</span>
+                    <span className="rounded bg-slate-800 px-2 py-1 text-xs uppercase text-slate-200">
+                      {order.type}
+                    </span>
                     <span>{order.instrument}</span>
                   </div>
                   <div className="text-sm text-slate-200">
                     {order.size}{' '}
-                    {order.price ? `@ ${order.price.toLocaleString('ru-RU')}` : 'market'}
+                    {order.price
+                      ? `@ ${order.price.toLocaleString('ru-RU')}`
+                      : 'market'}
                   </div>
                 </div>
               </div>
@@ -871,7 +1107,9 @@ export default function ManualTrading(): JSX.Element {
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-5 shadow-lg shadow-slate-900/40">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-slate-50">Позиции</h3>
-            <span className="text-xs text-slate-400">{positions.length} активных</span>
+            <span className="text-xs text-slate-400">
+              {positions.length} активных
+            </span>
           </div>
           <div className="space-y-2 text-sm">
             {positions.map((position) => (
@@ -880,15 +1118,21 @@ export default function ManualTrading(): JSX.Element {
                 className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
               >
                 <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">{position.instrument}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    {position.instrument}
+                  </p>
                   <p className="text-slate-100">
-                    Размер: <span className="font-semibold">{position.size}</span>
+                    Размер:{' '}
+                    <span className="font-semibold">{position.size}</span>
                   </p>
                   <p className="text-xs text-slate-400">
                     Доля баланса:{' '}
                     <span className="font-semibold text-emerald-200">
                       {balance > 0
-                        ? ((position.size * position.avgPrice) / balance * 100).toFixed(2)
+                        ? (
+                            ((position.size * position.avgPrice) / balance) *
+                            100
+                          ).toFixed(2)
                         : '0.00'}
                       %
                     </span>
@@ -897,11 +1141,15 @@ export default function ManualTrading(): JSX.Element {
                 <div className="text-right text-xs text-slate-300">
                   <p>
                     Средняя цена:{' '}
-                    <span className="font-semibold text-slate-100">{position.avgPrice.toLocaleString('ru-RU')}</span>
+                    <span className="font-semibold text-slate-100">
+                      {position.avgPrice.toLocaleString('ru-RU')}
+                    </span>
                   </p>
                   <p>
                     Ликвидация:{' '}
-                    <span className="font-semibold text-red-300">{position.liqPrice.toLocaleString('ru-RU')}</span>
+                    <span className="font-semibold text-red-300">
+                      {position.liqPrice.toLocaleString('ru-RU')}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -911,7 +1159,9 @@ export default function ManualTrading(): JSX.Element {
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-5 shadow-lg shadow-slate-900/40">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-slate-50">Активные ордера</h3>
+            <h3 className="text-lg font-semibold text-slate-50">
+              Активные ордера
+            </h3>
             <span className="text-xs text-slate-400">
               {orders.filter((order) => order.status === 'active').length} шт
             </span>
@@ -923,10 +1173,14 @@ export default function ManualTrading(): JSX.Element {
                 className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
               >
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-400">{order.instrument}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">
+                    {order.instrument}
+                  </p>
                   <p className="text-slate-100">
                     {order.type} · {order.size}{' '}
-                    {order.price ? `@ ${order.price.toLocaleString('ru-RU')}` : 'market'}
+                    {order.price
+                      ? `@ ${order.price.toLocaleString('ru-RU')}`
+                      : 'market'}
                   </p>
                 </div>
                 <span
