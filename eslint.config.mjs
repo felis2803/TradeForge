@@ -7,12 +7,15 @@ export default [
     ignores: ['dist', '**/dist/**', 'node_modules', 'coverage', '**/*.md'],
   },
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
+        ecmaFeatures: {
+          jsx: true,
+        },
       },
     },
     plugins: {
