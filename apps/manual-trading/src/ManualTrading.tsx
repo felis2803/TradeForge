@@ -23,12 +23,17 @@ const instrumentProfiles: Record<
   'XRP/USDT': { basePrice: 0.52, volatility: 0.006, baseVolume: 420 },
 };
 
+type OrderSide = 'buy' | 'sell';
+type OrderKind = 'Market' | 'Limit' | 'Stop';
+
 interface Order {
   id: string;
-  type: string;
+  type: OrderKind;
+  side: OrderSide;
   instrument: string;
   size: number;
   price?: number;
+  executionPrice?: number;
   status: 'active' | 'filled' | 'cancelled';
 }
 
@@ -52,6 +57,46 @@ interface DepthRow {
 }
 
 const ORDERBOOK_DEPTH = 12;
+
+const instrumentTradingRules: Record<
+  string,
+  {
+    minSize: number;
+    maxSize: number;
+    sizePrecision: number;
+    pricePrecision: number;
+    minNotional: number;
+  }
+> = {
+  'BTC/USDT': {
+    minSize: 0.001,
+    maxSize: 10,
+    sizePrecision: 3,
+    pricePrecision: 2,
+    minNotional: 25,
+  },
+  'ETH/USDT': {
+    minSize: 0.01,
+    maxSize: 500,
+    sizePrecision: 3,
+    pricePrecision: 2,
+    minNotional: 10,
+  },
+  'SOL/USDT': {
+    minSize: 0.1,
+    maxSize: 5000,
+    sizePrecision: 2,
+    pricePrecision: 3,
+    minNotional: 5,
+  },
+  'XRP/USDT': {
+    minSize: 1,
+    maxSize: 500000,
+    sizePrecision: 0,
+    pricePrecision: 5,
+    minNotional: 10,
+  },
+};
 
 function aggregateSide(
   levels: DepthRow[],
@@ -212,6 +257,53 @@ function mutateTrades(
   return [nextTrade, ...previous].slice(0, 12);
 }
 
+function getTradingRules(instrument: string) {
+  return (
+    instrumentTradingRules[instrument] ?? instrumentTradingRules[instruments[0]]
+  );
+}
+
+function countPrecision(value: number) {
+  const [, decimals] = value.toString().split('.');
+  return decimals?.length ?? 0;
+}
+
+function shouldFillOrder(order: Order, lastPrice: number) {
+  if (order.type === 'Market') {
+    return { shouldFill: true, executionPrice: lastPrice } as const;
+  }
+
+  if (!order.price) {
+    return { shouldFill: false } as const;
+  }
+
+  if (order.type === 'Limit') {
+    if (order.side === 'buy' && order.price >= lastPrice) {
+      return {
+        shouldFill: true,
+        executionPrice: Math.min(order.price, lastPrice),
+      } as const;
+    }
+    if (order.side === 'sell' && order.price <= lastPrice) {
+      return {
+        shouldFill: true,
+        executionPrice: Math.max(order.price, lastPrice),
+      } as const;
+    }
+  }
+
+  if (order.type === 'Stop') {
+    if (order.side === 'buy' && lastPrice >= order.price) {
+      return { shouldFill: true, executionPrice: lastPrice } as const;
+    }
+    if (order.side === 'sell' && lastPrice <= order.price) {
+      return { shouldFill: true, executionPrice: lastPrice } as const;
+    }
+  }
+
+  return { shouldFill: false } as const;
+}
+
 function mutateOrderBook(
   previous: OrderBookSnapshot,
   symbol: string,
@@ -297,13 +389,17 @@ export default function ManualTrading(): JSX.Element {
   >(playbackSpeeds[2]);
   const [balance, setBalance] = useState(10000);
   const [selectedInstrument, setSelectedInstrument] = useState(instruments[0]);
-  const [orderType, setOrderType] = useState('limit');
+  const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop'>(
+    'limit',
+  );
+  const [orderSide, setOrderSide] = useState<OrderSide>('buy');
   const [orderSize, setOrderSize] = useState(0.1);
   const [orderPrice, setOrderPrice] = useState(65000);
   const [orders, setOrders] = useState<Order[]>([
     {
       id: 'ord-1',
       type: 'Limit',
+      side: 'buy',
       instrument: 'BTC/USDT',
       size: 0.25,
       price: 64850,
@@ -312,12 +408,17 @@ export default function ManualTrading(): JSX.Element {
     {
       id: 'ord-2',
       type: 'Stop',
+      side: 'sell',
       instrument: 'ETH/USDT',
       size: 5,
       price: 2850,
       status: 'filled',
     },
   ]);
+  const [orderErrors, setOrderErrors] = useState<string[]>([]);
+  const [orderSubmitState, setOrderSubmitState] = useState<
+    'idle' | 'pending' | 'sent' | 'error'
+  >('idle');
   const [positions, setPositions] = useState<Position[]>([
     { instrument: 'BTC/USDT', size: 0.5, avgPrice: 64600, liqPrice: 52000 },
     { instrument: 'SOL/USDT', size: 120, avgPrice: 158, liqPrice: 96 },
@@ -410,6 +511,81 @@ export default function ManualTrading(): JSX.Element {
     setLastUpdateAt(null);
   }, [selectedInstrument]);
 
+  const orderRules = useMemo(
+    () => getTradingRules(selectedInstrument),
+    [selectedInstrument],
+  );
+
+  const notionalPreview = useMemo(
+    () => {
+      const priceRef = orderType === 'market' ? ticker.last : orderPrice;
+      return Number((priceRef * orderSize).toFixed(2));
+    },
+    [orderPrice, orderSize, orderType, ticker.last],
+  );
+
+  const applyFills = (filledOrders: Order[]) => {
+    if (!filledOrders.length) return;
+
+    setPositions((prev) => {
+      const next = [...prev];
+
+      filledOrders.forEach((order) => {
+        const fillPrice = order.executionPrice ?? order.price ?? ticker.last;
+        const signedSize = order.side === 'buy' ? order.size : -order.size;
+        const existingIndex = next.findIndex(
+          (pos) => pos.instrument === order.instrument,
+        );
+
+        if (existingIndex >= 0) {
+          const existing = next[existingIndex];
+          const newSize = Number((existing.size + signedSize).toFixed(3));
+          if (Math.abs(newSize) < 1e-6) {
+            next.splice(existingIndex, 1);
+            return;
+          }
+
+          const newAvgPrice =
+            order.side === 'buy'
+              ? Number(
+                  (
+                    (existing.avgPrice * existing.size +
+                      (fillPrice ?? existing.avgPrice) * order.size) /
+                    (existing.size + order.size)
+                  ).toFixed(3),
+                )
+              : existing.avgPrice;
+
+          next[existingIndex] = {
+            ...existing,
+            size: newSize,
+            avgPrice: Number(newAvgPrice),
+          };
+          return;
+        }
+
+        next.unshift({
+          instrument: order.instrument,
+          size: Number(signedSize.toFixed(3)),
+          avgPrice: fillPrice ?? getProfile(order.instrument).basePrice,
+          liqPrice: Number(((fillPrice ?? 0) * 0.6).toFixed(3)),
+        });
+      });
+
+      return next;
+    });
+
+    setBalance((prevBalance) => {
+      let nextBalance = prevBalance;
+      filledOrders.forEach((order) => {
+        const fillPrice = order.executionPrice ?? order.price ?? ticker.last;
+        const notional = (fillPrice ?? 0) * order.size;
+        nextBalance += order.side === 'sell' ? notional : -notional;
+      });
+      return Number(Math.max(0, nextBalance).toFixed(2));
+    });
+  };
+
   const updateIntervalMs = useMemo(
     () =>
       computeUpdateInterval(dataMode, playbackSpeed, periodStart, periodEnd),
@@ -446,6 +622,33 @@ export default function ManualTrading(): JSX.Element {
     ticker.last,
     updateIntervalMs,
   ]);
+
+  useEffect(() => {
+    if (!ticker) return;
+
+    const filledOrders: Order[] = [];
+
+    setOrders((prev) =>
+      prev.map((order) => {
+        if (order.status !== 'active') return order;
+        const result = shouldFillOrder(order, ticker.last);
+        if (!result.shouldFill) return order;
+
+        const filled = {
+          ...order,
+          status: 'filled',
+          executionPrice: result.executionPrice,
+        } as Order;
+        filledOrders.push(filled);
+        return filled;
+      }),
+    );
+
+    if (filledOrders.length) {
+      applyFills(filledOrders);
+      setConnectionMessage('Есть новые исполнения по активным ордерам.');
+    }
+  }, [ticker]);
 
   const handleConnect = () => {
     setConnectionError(null);
@@ -492,52 +695,117 @@ export default function ManualTrading(): JSX.Element {
 
   const handleSubmitOrder = (event: FormEvent) => {
     event.preventDefault();
+    setOrderErrors([]);
+    setOrderSubmitState('pending');
+
+    const rules = getTradingRules(selectedInstrument);
+    const errors: string[] = [];
+    const normalizedSize = Number(orderSize.toFixed(rules.sizePrecision));
+    const priceReference =
+      orderType === 'market' ? ticker.last : Number(orderPrice.toFixed(rules.pricePrecision));
+
+    if (!Number.isFinite(normalizedSize) || normalizedSize <= 0) {
+      errors.push('Укажите размер позиции.');
+    }
+    if (normalizedSize < rules.minSize) {
+      errors.push(`Минимальный размер: ${rules.minSize}.`);
+    }
+    if (normalizedSize > rules.maxSize) {
+      errors.push(`Максимальный размер: ${rules.maxSize}.`);
+    }
+    if (countPrecision(normalizedSize) > rules.sizePrecision) {
+      errors.push(`Доступная точность размера: до ${rules.sizePrecision} знаков.`);
+    }
+    if (orderType !== 'market' && (!Number.isFinite(priceReference) || priceReference <= 0)) {
+      errors.push('Цена должна быть положительным числом.');
+    }
+    if (orderType !== 'market' && countPrecision(priceReference) > rules.pricePrecision) {
+      errors.push(`Точность цены ограничена ${rules.pricePrecision} знаками.`);
+    }
+
+    const notional = Number((priceReference * normalizedSize).toFixed(2));
+    if (notional < rules.minNotional) {
+      errors.push(`Минимальная сумма сделки: ${rules.minNotional} USDT.`);
+    }
+    if (orderSide === 'buy' && notional > balance) {
+      errors.push('Недостаточно средств для покупки.');
+    }
+    if (dataUnavailable) {
+      errors.push('Данные недоступны — нельзя отправить ордер.');
+    }
+
+    if (errors.length) {
+      setOrderErrors(errors);
+      setOrderSubmitState('error');
+      return;
+    }
+
     const id = `ord-${Date.now()}`;
-    setOrders((prev) => [
-      {
-        id,
-        instrument: selectedInstrument,
-        type:
-          orderType === 'market'
-            ? 'Market'
-            : orderType === 'stop'
-              ? 'Stop'
-              : 'Limit',
-        size: orderSize,
-        price: orderType === 'market' ? undefined : orderPrice,
-        status: 'active',
-      },
-      ...prev,
-    ]);
-    setPositions((prev) => {
-      const existing = prev.find(
-        (pos) => pos.instrument === selectedInstrument,
-      );
-      if (existing) {
-        return prev.map((pos) =>
-          pos.instrument === selectedInstrument
-            ? {
-                ...pos,
-                size: pos.size + orderSize,
-                avgPrice:
-                  orderType === 'market'
-                    ? pos.avgPrice
-                    : (pos.avgPrice * pos.size + orderPrice * orderSize) /
-                      (pos.size + orderSize),
-              }
-            : pos,
-        );
-      }
-      return [
-        {
-          instrument: selectedInstrument,
-          size: orderSize,
-          avgPrice: orderPrice,
-          liqPrice: orderPrice * 0.6,
-        },
-        ...prev,
-      ];
-    });
+    const baseOrder: Order = {
+      id,
+      instrument: selectedInstrument,
+      type:
+        orderType === 'market'
+          ? 'Market'
+          : orderType === 'stop'
+            ? 'Stop'
+            : 'Limit',
+      side: orderSide,
+      size: normalizedSize,
+      price: orderType === 'market' ? undefined : priceReference,
+      executionPrice: orderType === 'market' ? priceReference : undefined,
+      status: orderType === 'market' ? 'filled' : 'active',
+    };
+
+    const immediateFill =
+      baseOrder.status === 'active'
+        ? shouldFillOrder(baseOrder, ticker.last)
+        : { shouldFill: false };
+    const nextOrder = immediateFill.shouldFill
+      ? {
+          ...baseOrder,
+          status: 'filled',
+          executionPrice:
+            immediateFill.executionPrice ?? baseOrder.executionPrice,
+        }
+      : baseOrder;
+
+    setOrders((prev) => [nextOrder, ...prev]);
+    if (nextOrder.status === 'filled') {
+      applyFills([nextOrder]);
+    }
+    setOrderSubmitState('sent');
+    setConnectionMessage(
+      nextOrder.status === 'filled'
+        ? 'Рыночный ордер исполнен по лучшей цене.'
+        : 'Ордер отправлен и ожидает исполнения.',
+    );
+  };
+
+  const handleCancelOrder = (orderId: string) => {
+    setOrders((prev) =>
+      prev.map((order) =>
+        order.id === orderId && order.status === 'active'
+          ? { ...order, status: 'cancelled' }
+          : order,
+      ),
+    );
+  };
+
+  const handleSelectPrice = (
+    price: number,
+    source: string,
+    sideHint?: OrderSide,
+  ) => {
+    const normalizedPrice = Number(price.toFixed(orderRules.pricePrecision));
+    setOrderType('limit');
+    setOrderPrice(normalizedPrice);
+    if (sideHint) {
+      setOrderSide(sideHint);
+    }
+    setConnectionMessage(
+      `Цена ${normalizedPrice.toLocaleString('ru-RU')} выбрана из ${source}.`,
+    );
   };
 
   const normalizedOrderBook = useMemo(
@@ -856,7 +1124,15 @@ export default function ManualTrading(): JSX.Element {
                   {trades.map((trade) => (
                     <div
                       key={`${trade.time}-${trade.price}-${trade.size}`}
-                      className="flex items-center justify-between rounded border border-slate-800 bg-slate-900/60 px-3 py-2"
+                      className="flex cursor-pointer items-center justify-between rounded border border-slate-800 bg-slate-900/60 px-3 py-2 hover:border-emerald-500/50"
+                      onClick={() =>
+                        handleSelectPrice(
+                          trade.price,
+                          'потока сделок',
+                          trade.side,
+                        )
+                      }
+                      title="Подставить цену сделки в форму"
                     >
                       <span className="text-slate-400">{trade.time}</span>
                       <span
@@ -899,7 +1175,11 @@ export default function ManualTrading(): JSX.Element {
                     {normalizedOrderBook.bids.map((row) => (
                       <div
                         key={`bid-${row.price}`}
-                        className="flex items-center justify-between rounded border border-slate-800 bg-emerald-500/5 px-3 py-1.5 text-emerald-100"
+                        className="flex cursor-pointer items-center justify-between rounded border border-slate-800 bg-emerald-500/5 px-3 py-1.5 text-emerald-100 hover:border-emerald-400/60"
+                        onClick={() =>
+                          handleSelectPrice(row.price, 'ордера на покупку', 'sell')
+                        }
+                        title="Поставить лучшую покупку как цену продажи"
                       >
                         <span className="font-semibold">
                           {row.price.toLocaleString('ru-RU')}
@@ -915,7 +1195,11 @@ export default function ManualTrading(): JSX.Element {
                     {normalizedOrderBook.asks.map((row) => (
                       <div
                         key={`ask-${row.price}`}
-                        className="flex items-center justify-between rounded border border-slate-800 bg-red-500/5 px-3 py-1.5 text-red-100"
+                        className="flex cursor-pointer items-center justify-between rounded border border-slate-800 bg-red-500/5 px-3 py-1.5 text-red-100 hover:border-red-400/60"
+                        onClick={() =>
+                          handleSelectPrice(row.price, 'ордера на продажу', 'buy')
+                        }
+                        title="Поставить лучшую продажу как цену покупки"
                       >
                         <span className="font-semibold">
                           {row.price.toLocaleString('ru-RU')}
@@ -994,10 +1278,23 @@ export default function ManualTrading(): JSX.Element {
               </select>
             </label>
             <label className="space-y-1">
+              <span className="text-slate-300">Сторона</span>
+              <select
+                value={orderSide}
+                onChange={(event) => setOrderSide(event.target.value as OrderSide)}
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 focus:border-emerald-400 focus:outline-none"
+              >
+                <option value="buy">Покупка</option>
+                <option value="sell">Продажа</option>
+              </select>
+            </label>
+            <label className="space-y-1">
               <span className="text-slate-300">Тип ордера</span>
               <select
                 value={orderType}
-                onChange={(event) => setOrderType(event.target.value)}
+                onChange={(event) =>
+                  setOrderType(event.target.value as typeof orderType)
+                }
                 className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 focus:border-emerald-400 focus:outline-none"
               >
                 <option value="market">Рыночный</option>
@@ -1009,10 +1306,19 @@ export default function ManualTrading(): JSX.Element {
               <span className="text-slate-300">Размер</span>
               <input
                 type="number"
-                min={0.001}
-                step={0.001}
+                min={orderRules.minSize}
+                max={orderRules.maxSize}
+                step={Math.pow(10, -orderRules.sizePrecision)}
                 value={orderSize}
-                onChange={(event) => setOrderSize(Number(event.target.value))}
+                onChange={(event) =>
+                  setOrderSize(
+                    Number(
+                      Number(event.target.value).toFixed(
+                        orderRules.sizePrecision,
+                      ),
+                    ),
+                  )
+                }
                 className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 focus:border-emerald-400 focus:outline-none"
               />
             </label>
@@ -1022,14 +1328,57 @@ export default function ManualTrading(): JSX.Element {
                 <input
                   type="number"
                   min={1}
-                  step={1}
+                  step={Math.pow(10, -orderRules.pricePrecision)}
                   value={orderPrice}
                   onChange={(event) =>
-                    setOrderPrice(Number(event.target.value))
+                    setOrderPrice(
+                      Number(
+                        Number(event.target.value).toFixed(
+                          orderRules.pricePrecision,
+                        ),
+                      ),
+                    )
                   }
                   className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 focus:border-emerald-400 focus:outline-none"
                 />
               </label>
+            )}
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>
+                Нотионал: <strong>{notionalPreview.toLocaleString('ru-RU')}</strong>{' '}
+                USDT
+              </span>
+              <span>
+                Доступно: <strong>{balance.toLocaleString('ru-RU')}</strong> USDT
+              </span>
+            </div>
+            {orderErrors.length > 0 && (
+              <div className="space-y-1 rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+                <p className="font-semibold">Проверьте заполнение формы:</p>
+                <ul className="list-inside list-disc space-y-0.5">
+                  {orderErrors.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {orderSubmitState !== 'idle' && (
+              <div
+                className={`rounded-md border px-3 py-2 text-xs font-semibold ${
+                  orderSubmitState === 'pending'
+                    ? 'border-amber-400/70 bg-amber-500/10 text-amber-200'
+                    : orderSubmitState === 'sent'
+                      ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-200'
+                      : 'border-red-500/70 bg-red-500/10 text-red-100'
+                }`}
+                aria-live="polite"
+              >
+                {orderSubmitState === 'pending'
+                  ? 'В ожидании валидации и отправки'
+                  : orderSubmitState === 'sent'
+                    ? 'Отправлен'
+                    : 'Ошибка отправки'}
+              </div>
             )}
             <button
               type="submit"
@@ -1061,16 +1410,43 @@ export default function ManualTrading(): JSX.Element {
                 </div>
                 <div className="mt-1 flex items-center justify-between">
                   <div className="flex items-center gap-2 font-semibold">
-                    <span className="rounded bg-slate-800 px-2 py-1 text-xs uppercase text-slate-200">
-                      {order.type}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded bg-slate-800 px-2 py-1 text-xs uppercase text-slate-200">
+                        {order.type}
+                      </span>
+                      <span
+                        className={`rounded px-2 py-1 text-xs font-semibold uppercase ${
+                          order.side === 'buy'
+                            ? 'bg-emerald-500/20 text-emerald-200'
+                            : 'bg-red-500/20 text-red-200'
+                        }`}
+                      >
+                        {order.side}
+                      </span>
+                    </div>
                     <span>{order.instrument}</span>
                   </div>
-                  <div className="text-sm text-slate-200">
-                    {order.size}{' '}
-                    {order.price
-                      ? `@ ${order.price.toLocaleString('ru-RU')}`
-                      : 'market'}
+                  <div className="flex items-center gap-2 text-sm text-slate-200">
+                    <span>
+                      {order.size}{' '}
+                      {order.price
+                        ? `@ ${order.price.toLocaleString('ru-RU')}`
+                        : 'market'}
+                    </span>
+                    {order.executionPrice && (
+                      <span className="text-xs text-slate-400">
+                        исполнено по {order.executionPrice.toLocaleString('ru-RU')}
+                      </span>
+                    )}
+                    {order.status === 'active' && (
+                      <button
+                        type="button"
+                        onClick={() => handleCancelOrder(order.id)}
+                        className="rounded border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-200 hover:border-red-400 hover:text-red-200"
+                      >
+                        Отменить
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1153,11 +1529,16 @@ export default function ManualTrading(): JSX.Element {
                     {order.instrument}
                   </p>
                   <p className="text-slate-100">
-                    {order.type} · {order.size}{' '}
+                    {order.type} · {order.side.toUpperCase()} · {order.size}{' '}
                     {order.price
                       ? `@ ${order.price.toLocaleString('ru-RU')}`
                       : 'market'}
                   </p>
+                  {order.executionPrice && (
+                    <p className="text-xs text-slate-400">
+                      Исполнено по {order.executionPrice.toLocaleString('ru-RU')}
+                    </p>
+                  )}
                 </div>
                 <span
                   className={
@@ -1170,6 +1551,15 @@ export default function ManualTrading(): JSX.Element {
                 >
                   {order.status}
                 </span>
+                {order.status === 'active' && (
+                  <button
+                    type="button"
+                    onClick={() => handleCancelOrder(order.id)}
+                    className="ml-3 rounded border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-200 hover:border-red-400 hover:text-red-200"
+                  >
+                    Отменить
+                  </button>
+                )}
               </div>
             ))}
           </div>
