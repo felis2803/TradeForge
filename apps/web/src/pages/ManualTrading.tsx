@@ -54,6 +54,23 @@ interface DepthRow {
 
 const ORDERBOOK_DEPTH = 12;
 
+function computeLiqPrice(
+  avgPrice: number,
+  size: number,
+  markPrice?: number,
+) {
+  const reference = Math.min(avgPrice, markPrice ?? avgPrice);
+  const riskClamp = Math.max(0.35, 0.6 - Math.min(0.2, Math.abs(size) * 0.01));
+  return Number((reference * riskClamp).toFixed(2));
+}
+
+function computePnl(position: Position, markPrice: number) {
+  const diff = Number(((markPrice - position.avgPrice) * position.size).toFixed(2));
+  const notional = Math.max(1, Math.abs(position.avgPrice * position.size));
+  const pct = Number(((diff / notional) * 100).toFixed(2));
+  return { diff, pct };
+}
+
 function aggregateSide(
   levels: DepthRow[],
   side: 'bids' | 'asks',
@@ -351,6 +368,18 @@ export default function ManualTrading(): JSX.Element {
     { instrument: 'BTC/USDT', size: 0.5, avgPrice: 64600, liqPrice: 52000 },
     { instrument: 'SOL/USDT', size: 120, avgPrice: 158, liqPrice: 96 },
   ]);
+  const [markPrices, setMarkPrices] = useState<Record<string, number>>(
+    () =>
+      Object.fromEntries(
+        instruments.map((instrument) => [
+          instrument,
+          getProfile(instrument).basePrice,
+        ]),
+      ),
+  );
+  const [positionEvents, setPositionEvents] = useState<
+    { id: string; message: string; timestamp: Date }[]
+  >([]);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isPaused, setIsPaused] = useState(false);
@@ -451,11 +480,47 @@ export default function ManualTrading(): JSX.Element {
     latestPriceRef.current = ticker.last;
   }, [ticker.last]);
 
+  useEffect(() => {
+    setMarkPrices((previous) => ({
+      ...previous,
+      [selectedInstrument]: ticker.last,
+    }));
+  }, [selectedInstrument, ticker.last]);
+
   const updateIntervalMs = useMemo(
     () =>
       computeUpdateInterval(dataMode, playbackSpeed, periodStart, periodEnd),
     [dataMode, periodEnd, periodStart, playbackSpeed],
   );
+
+  const markPriceForInstrument = (instrument: string) =>
+    markPrices[instrument] ?? getProfile(instrument).basePrice;
+
+  const recordSyntheticTrade = (
+    instrument: string,
+    side: TradeRow['side'],
+    size: number,
+    price?: number,
+  ) => {
+    const tradePrice = price ?? markPriceForInstrument(instrument);
+    const timestamp = Date.now();
+    const tradeRow = buildTradeRow({
+      timestamp,
+      side,
+      price: tradePrice,
+      size: Number(Math.abs(size).toFixed(3)),
+    });
+    setTrades((previous) => sortTrades([tradeRow, ...previous]).slice(0, 12));
+  };
+
+  const addPositionEvent = (message: string) => {
+    setPositionEvents((previous) =>
+      [
+        { id: `evt-${Date.now()}`, message, timestamp: new Date() },
+        ...previous,
+      ].slice(0, 6),
+    );
+  };
 
   useEffect(() => {
     if (dataUnavailable || isPaused) return;
@@ -560,6 +625,8 @@ export default function ManualTrading(): JSX.Element {
   const handleSubmitOrder = (event: FormEvent) => {
     event.preventDefault();
     const id = `ord-${Date.now()}`;
+    const markPrice = markPriceForInstrument(selectedInstrument);
+    let updatedPosition: Position | null = null;
     setOrders((prev) => [
       {
         id,
@@ -581,30 +648,81 @@ export default function ManualTrading(): JSX.Element {
         (pos) => pos.instrument === selectedInstrument,
       );
       if (existing) {
+        const nextSize = existing.size + orderSize;
+        const nextAvg =
+          orderType === 'market'
+            ? existing.avgPrice
+            : (existing.avgPrice * existing.size + orderPrice * orderSize) /
+              nextSize;
+        updatedPosition = {
+          ...existing,
+          size: nextSize,
+          avgPrice: nextAvg,
+          liqPrice: computeLiqPrice(nextAvg, nextSize, markPrice),
+        };
         return prev.map((pos) =>
-          pos.instrument === selectedInstrument
-            ? {
-                ...pos,
-                size: pos.size + orderSize,
-                avgPrice:
-                  orderType === 'market'
-                    ? pos.avgPrice
-                    : (pos.avgPrice * pos.size + orderPrice * orderSize) /
-                      (pos.size + orderSize),
-              }
-            : pos,
+          pos.instrument === selectedInstrument ? updatedPosition! : pos,
         );
       }
-      return [
-        {
-          instrument: selectedInstrument,
-          size: orderSize,
-          avgPrice: orderPrice,
-          liqPrice: orderPrice * 0.6,
-        },
-        ...prev,
-      ];
+      const nextPosition: Position = {
+        instrument: selectedInstrument,
+        size: orderSize,
+        avgPrice: orderPrice,
+        liqPrice: computeLiqPrice(orderPrice, orderSize, markPrice),
+      };
+      updatedPosition = nextPosition;
+      return [nextPosition, ...prev];
     });
+
+    if (updatedPosition) {
+      addPositionEvent(
+        `Позиция ${updatedPosition.instrument} обновлена: ${updatedPosition.size.toFixed(3)} @ ${updatedPosition.avgPrice.toLocaleString('ru-RU')}`,
+      );
+    }
+  };
+
+  const handleClosePosition = (instrument: string) => {
+    const markPrice = markPriceForInstrument(instrument);
+    setPositions((previous) => {
+      const existing = previous.find((pos) => pos.instrument === instrument);
+      if (!existing) return previous;
+      recordSyntheticTrade(
+        instrument,
+        existing.size >= 0 ? 'sell' : 'buy',
+        Math.abs(existing.size),
+        markPrice,
+      );
+      addPositionEvent(
+        `Позиция ${instrument} закрыта по ${markPrice.toLocaleString('ru-RU')}`,
+      );
+      return previous.filter((pos) => pos.instrument !== instrument);
+    });
+  };
+
+  const handleReversePosition = (instrument: string) => {
+    const markPrice = markPriceForInstrument(instrument);
+    let originalSize: number | null = null;
+    setPositions((previous) =>
+      previous.map((pos) => {
+        if (pos.instrument !== instrument) return pos;
+        originalSize = pos.size;
+        const nextSize = -pos.size;
+        return {
+          ...pos,
+          size: nextSize,
+          avgPrice: markPrice,
+          liqPrice: computeLiqPrice(markPrice, nextSize, markPrice),
+        };
+      }),
+    );
+    if (originalSize === null) return;
+    const closingSide = originalSize > 0 ? 'sell' : 'buy';
+    const openingSide = originalSize > 0 ? 'buy' : 'sell';
+    recordSyntheticTrade(instrument, closingSide, Math.abs(originalSize), markPrice);
+    recordSyntheticTrade(instrument, openingSide, Math.abs(originalSize), markPrice);
+    addPositionEvent(
+      `Позиция ${instrument} развернута: ${(-originalSize).toFixed(3)} @ ${markPrice.toLocaleString('ru-RU')}`,
+    );
   };
 
   const normalizedOrderBook = useMemo(
@@ -626,7 +744,7 @@ export default function ManualTrading(): JSX.Element {
   const totalExposure = useMemo(
     () =>
       positions.reduce(
-        (sum, position) => sum + position.size * position.avgPrice,
+        (sum, position) => sum + Math.abs(position.size * position.avgPrice),
         0,
       ),
     [positions],
@@ -1165,44 +1283,106 @@ export default function ManualTrading(): JSX.Element {
                 key={position.instrument}
                 className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
               >
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
-                    {position.instrument}
-                  </p>
-                  <p className="text-slate-100">
-                    Размер:{' '}
-                    <span className="font-semibold">{position.size}</span>
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    Доля баланса:{' '}
-                    <span className="font-semibold text-emerald-200">
-                      {balance > 0
-                        ? (
-                            ((position.size * position.avgPrice) / balance) *
-                            100
-                          ).toFixed(2)
-                        : '0.00'}
-                      %
-                    </span>
-                  </p>
-                </div>
-                <div className="text-right text-xs text-slate-300">
-                  <p>
-                    Средняя цена:{' '}
-                    <span className="font-semibold text-slate-100">
-                      {position.avgPrice.toLocaleString('ru-RU')}
-                    </span>
-                  </p>
-                  <p>
-                    Ликвидация:{' '}
-                    <span className="font-semibold text-red-300">
-                      {position.liqPrice.toLocaleString('ru-RU')}
-                    </span>
-                  </p>
-                </div>
+                {(() => {
+                  const markPrice = markPriceForInstrument(position.instrument);
+                  const { diff, pct } = computePnl(position, markPrice);
+                  const computedLiq = computeLiqPrice(
+                    position.avgPrice,
+                    position.size,
+                    markPrice,
+                  );
+                  return (
+                    <>
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          {position.instrument}
+                        </p>
+                        <p className="text-slate-100">
+                          Размер:{' '}
+                          <span className="font-semibold">
+                            {position.size.toFixed(3)}
+                          </span>
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Доля баланса:{' '}
+                          <span className="font-semibold text-emerald-200">
+                            {balance > 0
+                              ? (
+                                  (Math.abs(position.size * position.avgPrice) /
+                                    balance) *
+                                  100
+                                ).toFixed(2)
+                              : '0.00'}
+                            %
+                          </span>
+                        </p>
+                        <div className="flex flex-wrap gap-2 text-xs text-slate-300">
+                          <button
+                            type="button"
+                            onClick={() => handleClosePosition(position.instrument)}
+                            className="rounded border border-slate-700 px-2 py-1 text-[11px] font-semibold hover:border-emerald-400 hover:text-emerald-200"
+                          >
+                            Закрыть
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleReversePosition(position.instrument)}
+                            className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:border-amber-400 hover:bg-amber-500/10"
+                          >
+                            Реверс
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-right text-xs text-slate-300">
+                        <p>
+                          Средняя цена:{' '}
+                          <span className="font-semibold text-slate-100">
+                            {position.avgPrice.toLocaleString('ru-RU')}
+                          </span>
+                        </p>
+                        <p>
+                          Ликвидация:{' '}
+                          <span className="font-semibold text-red-300">
+                            {computedLiq.toLocaleString('ru-RU')}
+                          </span>
+                        </p>
+                        <p
+                          className={
+                            diff >= 0
+                              ? 'font-semibold text-emerald-300'
+                              : 'font-semibold text-red-300'
+                          }
+                        >
+                          PnL: {diff >= 0 ? '+' : ''}
+                          {diff.toLocaleString('ru-RU')} ({pct}%)
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          Mark: {markPrice.toLocaleString('ru-RU')}
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             ))}
           </div>
+          {positionEvents.length > 0 && (
+            <div className="mt-3 space-y-1 rounded border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-200">
+              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                История действий
+              </p>
+              {positionEvents.map((event) => (
+                <div key={event.id} className="flex items-center justify-between">
+                  <span>{event.message}</span>
+                  <span className="text-[11px] text-slate-500">
+                    {event.timestamp.toLocaleTimeString('ru-RU', {
+                      hour12: false,
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-5 shadow-lg shadow-slate-900/40">

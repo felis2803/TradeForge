@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const PORT_BACKEND = Number(process.env.BACKEND_PORT ?? 3001);
 const PORT_FRONTEND = Number(process.env.FRONTEND_PORT ?? 5173);
+const PORT_MANUAL = Number(process.env.MANUAL_FRONTEND_PORT ?? 5174);
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -35,6 +36,13 @@ export default defineConfig({
     {
       command: `pnpm --dir apps/web dev`,
       port: PORT_FRONTEND,
+      reuseExistingServer: !process.env.CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: `pnpm --dir apps/manual-trading dev`,
+      port: PORT_MANUAL,
       reuseExistingServer: !process.env.CI,
       stdout: 'pipe',
       stderr: 'pipe',
