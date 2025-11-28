@@ -54,18 +54,16 @@ interface DepthRow {
 
 const ORDERBOOK_DEPTH = 12;
 
-function computeLiqPrice(
-  avgPrice: number,
-  size: number,
-  markPrice?: number,
-) {
+function computeLiqPrice(avgPrice: number, size: number, markPrice?: number) {
   const reference = Math.min(avgPrice, markPrice ?? avgPrice);
   const riskClamp = Math.max(0.35, 0.6 - Math.min(0.2, Math.abs(size) * 0.01));
   return Number((reference * riskClamp).toFixed(2));
 }
 
 function computePnl(position: Position, markPrice: number) {
-  const diff = Number(((markPrice - position.avgPrice) * position.size).toFixed(2));
+  const diff = Number(
+    ((markPrice - position.avgPrice) * position.size).toFixed(2),
+  );
   const notional = Math.max(1, Math.abs(position.avgPrice * position.size));
   const pct = Number(((diff / notional) * 100).toFixed(2));
   return { diff, pct };
@@ -79,14 +77,18 @@ function aggregateSide(
   const buckets = new Map<string, number>();
 
   for (const { price, size } of levels) {
-    if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) continue;
+    if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0)
+      continue;
     const priceKey = price.toFixed(3);
     const nextSize = (buckets.get(priceKey) ?? 0) + size;
     buckets.set(priceKey, nextSize);
   }
 
   const sorted = Array.from(buckets.entries())
-    .map(([price, size]) => ({ price: Number(price), size: Number(size.toFixed(3)) }))
+    .map(([price, size]) => ({
+      price: Number(price),
+      size: Number(size.toFixed(3)),
+    }))
     .sort((left, right) =>
       side === 'bids' ? right.price - left.price : left.price - right.price,
     );
@@ -368,14 +370,13 @@ export default function ManualTrading(): JSX.Element {
     { instrument: 'BTC/USDT', size: 0.5, avgPrice: 64600, liqPrice: 52000 },
     { instrument: 'SOL/USDT', size: 120, avgPrice: 158, liqPrice: 96 },
   ]);
-  const [markPrices, setMarkPrices] = useState<Record<string, number>>(
-    () =>
-      Object.fromEntries(
-        instruments.map((instrument) => [
-          instrument,
-          getProfile(instrument).basePrice,
-        ]),
-      ),
+  const [markPrices, setMarkPrices] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      instruments.map((instrument) => [
+        instrument,
+        getProfile(instrument).basePrice,
+      ]),
+    ),
   );
   const [positionEvents, setPositionEvents] = useState<
     { id: string; message: string; timestamp: Date }[]
@@ -718,28 +719,36 @@ export default function ManualTrading(): JSX.Element {
     if (originalSize === null) return;
     const closingSide = originalSize > 0 ? 'sell' : 'buy';
     const openingSide = originalSize > 0 ? 'buy' : 'sell';
-    recordSyntheticTrade(instrument, closingSide, Math.abs(originalSize), markPrice);
-    recordSyntheticTrade(instrument, openingSide, Math.abs(originalSize), markPrice);
+    recordSyntheticTrade(
+      instrument,
+      closingSide,
+      Math.abs(originalSize),
+      markPrice,
+    );
+    recordSyntheticTrade(
+      instrument,
+      openingSide,
+      Math.abs(originalSize),
+      markPrice,
+    );
     addPositionEvent(
       `Позиция ${instrument} развернута: ${(-originalSize).toFixed(3)} @ ${markPrice.toLocaleString('ru-RU')}`,
     );
   };
 
-  const normalizedOrderBook = useMemo(
-    () => {
-      const bids = aggregateSide(orderBook.bids, 'bids');
-      const asks = aggregateSide(orderBook.asks, 'asks');
+  const normalizedOrderBook = useMemo(() => {
+    const bids = aggregateSide(orderBook.bids, 'bids');
+    const asks = aggregateSide(orderBook.asks, 'asks');
 
-      return {
-        bids: bids.levels,
-        asks: asks.levels,
-        truncated:
-          bids.uniqueLevels > ORDERBOOK_DEPTH || asks.uniqueLevels > ORDERBOOK_DEPTH,
-        totalLevels: bids.uniqueLevels + asks.uniqueLevels,
-      };
-    },
-    [orderBook],
-  );
+    return {
+      bids: bids.levels,
+      asks: asks.levels,
+      truncated:
+        bids.uniqueLevels > ORDERBOOK_DEPTH ||
+        asks.uniqueLevels > ORDERBOOK_DEPTH,
+      totalLevels: bids.uniqueLevels + asks.uniqueLevels,
+    };
+  }, [orderBook]);
 
   const totalExposure = useMemo(
     () =>
@@ -1116,7 +1125,8 @@ export default function ManualTrading(): JSX.Element {
                   </div>
                   {normalizedOrderBook.truncated ? (
                     <p className="col-span-2 text-xs text-slate-400">
-                      Показаны топ-{ORDERBOOK_DEPTH} уровней (агрегация по цене, всего {normalizedOrderBook.totalLevels}).
+                      Показаны топ-{ORDERBOOK_DEPTH} уровней (агрегация по цене,
+                      всего {normalizedOrderBook.totalLevels}).
                     </p>
                   ) : null}
                 </div>
@@ -1319,14 +1329,18 @@ export default function ManualTrading(): JSX.Element {
                         <div className="flex flex-wrap gap-2 text-xs text-slate-300">
                           <button
                             type="button"
-                            onClick={() => handleClosePosition(position.instrument)}
+                            onClick={() =>
+                              handleClosePosition(position.instrument)
+                            }
                             className="rounded border border-slate-700 px-2 py-1 text-[11px] font-semibold hover:border-emerald-400 hover:text-emerald-200"
                           >
                             Закрыть
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleReversePosition(position.instrument)}
+                            onClick={() =>
+                              handleReversePosition(position.instrument)
+                            }
                             className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:border-amber-400 hover:bg-amber-500/10"
                           >
                             Реверс
@@ -1372,7 +1386,10 @@ export default function ManualTrading(): JSX.Element {
                 История действий
               </p>
               {positionEvents.map((event) => (
-                <div key={event.id} className="flex items-center justify-between">
+                <div
+                  key={event.id}
+                  className="flex items-center justify-between"
+                >
                   <span>{event.message}</span>
                   <span className="text-[11px] text-slate-500">
                     {event.timestamp.toLocaleTimeString('ru-RU', {
