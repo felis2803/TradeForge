@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const exchanges = ['Binance', 'Bybit', 'OKX', 'Bitget'];
 const instruments = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'];
@@ -401,6 +401,8 @@ export default function ManualTrading(): JSX.Element {
   const [playbackSpeed, setPlaybackSpeed] = useState<
     (typeof playbackSpeeds)[number]
   >(playbackSpeeds[2]);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [playbackCursor, setPlaybackCursor] = useState(0);
   const [balance, setBalance] = useState(10000);
   const [selectedInstrument, setSelectedInstrument] = useState(instruments[0]);
   const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop'>(
@@ -465,6 +467,20 @@ export default function ManualTrading(): JSX.Element {
   );
   const [dataUnavailable, setDataUnavailable] = useState(false);
   const [lastUpdateAt, setLastUpdateAt] = useState<Date | null>(null);
+  const latestPriceRef = useRef<number>(ticker.last);
+  const tradesRef = useRef(trades);
+  const orderBookRef = useRef(orderBook);
+  const chartRef = useRef(syntheticChart);
+  const tickerRef = useRef(ticker);
+  const [timeline, setTimeline] = useState<
+    {
+      timestamp: number;
+      ticker: TickerSnapshot;
+      trades: TradeRow[];
+      orderBook: OrderBookSnapshot;
+      chart: ChartPoint[];
+    }[]
+  >([]);
 
   useEffect(() => {
     const saved = localStorage.getItem('manual-trading:connection');
@@ -529,20 +545,20 @@ export default function ManualTrading(): JSX.Element {
   ]);
 
   useEffect(() => {
-    setTicker(createTickerSnapshot(selectedInstrument));
-    setTrades(seedTrades(selectedInstrument));
-    setOrderBook(seedOrderBook(selectedInstrument));
-    setSyntheticChart(seedChart(selectedInstrument));
-    setDataUnavailable(false);
-    setLastUpdateAt(null);
-  }, [selectedInstrument]);
+    tradesRef.current = trades;
+  }, [trades]);
 
   useEffect(() => {
-    setMarkPrices((previous) => ({
-      ...previous,
-      [selectedInstrument]: ticker.last,
-    }));
-  }, [selectedInstrument, ticker.last]);
+    orderBookRef.current = orderBook;
+  }, [orderBook]);
+
+  useEffect(() => {
+    chartRef.current = syntheticChart;
+  }, [syntheticChart]);
+
+  useEffect(() => {
+    tickerRef.current = ticker;
+  }, [ticker]);
 
   const orderRules = useMemo(
     () => getTradingRules(selectedInstrument),
@@ -559,6 +575,45 @@ export default function ManualTrading(): JSX.Element {
 
   const markPriceForInstrument = (instrument: string) =>
     markPrices[instrument] ?? getProfile(instrument).basePrice;
+
+  const resetStreams = useCallback(
+    (instrument = selectedInstrument, keepPlaying?: boolean) => {
+      const nextTicker = createTickerSnapshot(instrument);
+      const seededTrades = seedTrades(instrument);
+      const seededOrderBook = seedOrderBook(instrument);
+      const seededChart = seedChart(instrument);
+      const snapshot = {
+        timestamp: Date.now(),
+        ticker: nextTicker,
+        trades: seededTrades,
+        orderBook: seededOrderBook,
+        chart: seededChart,
+      };
+
+      latestPriceRef.current = nextTicker.last;
+      setTicker(nextTicker);
+      setTrades(seededTrades);
+      setOrderBook(seededOrderBook);
+      setSyntheticChart(seededChart);
+      setTimeline([snapshot]);
+      setPlaybackCursor(0);
+      setIsPlaying((current) => keepPlaying ?? current);
+      setDataUnavailable(false);
+      setLastUpdateAt(null);
+    },
+    [selectedInstrument],
+  );
+
+  useEffect(() => {
+    resetStreams(selectedInstrument);
+  }, [resetStreams, selectedInstrument]);
+
+  useEffect(() => {
+    setMarkPrices((previous) => ({
+      ...previous,
+      [selectedInstrument]: ticker.last,
+    }));
+  }, [selectedInstrument, ticker.last]);
 
   const addPositionEvent = (message: string) => {
     setPositionEvents((previous) =>
@@ -653,30 +708,66 @@ export default function ManualTrading(): JSX.Element {
       computeUpdateInterval(dataMode, playbackSpeed, periodStart, periodEnd),
     [dataMode, periodEnd, periodStart, playbackSpeed],
   );
+  const timelineMaxIndex = Math.max(0, timeline.length - 1);
+  const clampedCursor = Math.min(playbackCursor, timelineMaxIndex);
+  const playbackPositionLabel = useMemo(() => {
+    if (!timeline.length) return 'Ожидание данных';
+
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return '—';
+
+    const ratio = timelineMaxIndex > 0 ? clampedCursor / timelineMaxIndex : 0;
+    const cursorMs = startMs + (endMs - startMs) * ratio;
+    return new Date(cursorMs).toLocaleString('ru-RU');
+  }, [clampedCursor, periodEnd, periodStart, timeline.length, timelineMaxIndex]);
 
   useEffect(() => {
-    if (dataUnavailable) return;
+    if (dataUnavailable || !isPlaying) return;
 
     const intervalId = window.setInterval(() => {
-      let priceForChildren = ticker.last;
-      setTicker((prev) => {
-        const next = mutateTicker(prev, selectedInstrument, dataMode);
-        priceForChildren = next.last;
-        return next;
-      });
-      setTrades((prev) =>
-        mutateTrades(prev, selectedInstrument, dataMode, priceForChildren),
+      const nextTicker = mutateTicker(tickerRef.current, selectedInstrument, dataMode);
+      const priceForChildren = nextTicker.last;
+      const nextTrades = mutateTrades(
+        tradesRef.current,
+        selectedInstrument,
+        dataMode,
+        priceForChildren,
       );
-      setOrderBook((prev) =>
-        mutateOrderBook(prev, selectedInstrument, priceForChildren),
+      const nextOrderBook = mutateOrderBook(
+        orderBookRef.current,
+        selectedInstrument,
+        priceForChildren,
       );
-      setSyntheticChart((prev) =>
-        mutateChart(prev, selectedInstrument, priceForChildren),
+      const nextChart = mutateChart(
+        chartRef.current,
+        selectedInstrument,
+        priceForChildren,
       );
+
+      latestPriceRef.current = priceForChildren;
+      setTicker(nextTicker);
+      setTrades(nextTrades);
+      setOrderBook(nextOrderBook);
+      setSyntheticChart(nextChart);
       setMarkPrices((previous) => ({
         ...previous,
         [selectedInstrument]: priceForChildren,
       }));
+      setTimeline((previous) => {
+        const nextSnapshot = {
+          timestamp: Date.now(),
+          ticker: nextTicker,
+          trades: nextTrades,
+          orderBook: nextOrderBook,
+          chart: nextChart,
+        };
+        const nextTimeline = [...previous.slice(-299), nextSnapshot];
+        setPlaybackCursor(nextTimeline.length - 1);
+        return nextTimeline;
+      });
       setLastUpdateAt(new Date());
     }, updateIntervalMs);
 
@@ -684,10 +775,32 @@ export default function ManualTrading(): JSX.Element {
   }, [
     dataUnavailable,
     dataMode,
+    isPlaying,
     selectedInstrument,
-    ticker.last,
     updateIntervalMs,
   ]);
+
+  useEffect(() => {
+    const maxIndex = Math.max(0, timeline.length - 1);
+    if (playbackCursor > maxIndex) {
+      setPlaybackCursor(maxIndex);
+      return;
+    }
+
+    const snapshot = timeline[playbackCursor];
+    if (!snapshot) return;
+
+    latestPriceRef.current = snapshot.ticker.last;
+    setTicker(snapshot.ticker);
+    setTrades(snapshot.trades);
+    setOrderBook(snapshot.orderBook);
+    setSyntheticChart(snapshot.chart);
+    setMarkPrices((previous) => ({
+      ...previous,
+      [selectedInstrument]: snapshot.ticker.last,
+    }));
+    setLastUpdateAt(new Date(snapshot.timestamp));
+  }, [playbackCursor, selectedInstrument, timeline]);
 
   useEffect(() => {
     if (!ticker) return;
@@ -780,15 +893,42 @@ export default function ManualTrading(): JSX.Element {
         return;
       }
 
+      resetStreams(selectedInstrument, true);
       setConnectionMessage(
         `Историческое воспроизведение: ${start.toLocaleString('ru-RU')} → ${end.toLocaleString('ru-RU')} @ ${playbackSpeed}. Стартовый баланс: ${balance.toLocaleString('ru-RU')} USDT`,
       );
       return;
     }
 
+    resetStreams(selectedInstrument, true);
     setConnectionMessage(
       `Realtime поток на ${selectedExchange}. Баланс и позиции инициализированы на ${balance.toLocaleString('ru-RU')} USDT`,
     );
+  };
+
+  const handleSimulateOutage = () => {
+    setIsPlaying(false);
+    setDataUnavailable(true);
+  };
+
+  const handleResumeStream = () => {
+    resetStreams(selectedInstrument, true);
+    setConnectionMessage('Поток данных восстановлен');
+    setLastUpdateAt(new Date());
+  };
+
+  const handleTogglePlayback = () => {
+    setIsPlaying((previous) => !previous);
+  };
+
+  const handleStopPlayback = () => {
+    setIsPlaying(false);
+    setPlaybackCursor(0);
+  };
+
+  const handleSeek = (nextIndex: number) => {
+    setIsPlaying(false);
+    setPlaybackCursor(nextIndex);
   };
 
   const handlePriceShock = (direction: 'up' | 'down') => {
@@ -1082,7 +1222,7 @@ export default function ManualTrading(): JSX.Element {
             </button>
             <button
               type="button"
-              onClick={() => setDataUnavailable(true)}
+              onClick={handleSimulateOutage}
               className="rounded-md border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-400/20"
             >
               Симулировать обрыв
@@ -1090,18 +1230,28 @@ export default function ManualTrading(): JSX.Element {
             <button
               type="button"
               disabled={!dataUnavailable}
-              onClick={() => {
-                setDataUnavailable(false);
-                setTicker(createTickerSnapshot(selectedInstrument));
-                setTrades(seedTrades(selectedInstrument));
-                setOrderBook(seedOrderBook(selectedInstrument));
-                setSyntheticChart(seedChart(selectedInstrument));
-                setConnectionMessage('Поток данных восстановлен');
-                setLastUpdateAt(new Date());
-              }}
+              onClick={handleResumeStream}
               className="rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Вернуть поток
+            </button>
+            <button
+              type="button"
+              onClick={handleTogglePlayback}
+              className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                isPlaying
+                  ? 'border-emerald-500/70 text-emerald-200 hover:border-emerald-400'
+                  : 'border-slate-700 text-slate-200 hover:border-emerald-400 hover:text-emerald-200'
+              }`}
+            >
+              {isPlaying ? 'Пауза' : 'Возобновить'}
+            </button>
+            <button
+              type="button"
+              onClick={handleStopPlayback}
+              className="rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-amber-400 hover:text-amber-200"
+            >
+              Стоп
             </button>
             <button
               type="button"
@@ -1159,6 +1309,31 @@ export default function ManualTrading(): JSX.Element {
                 ))}
               </select>
             </label>
+            <div className="md:col-span-3 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Перемотка периода</span>
+                <span>
+                  {playbackPositionLabel} · кадр {clampedCursor + 1} /{' '}
+                  {Math.max(1, timeline.length)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={timelineMaxIndex}
+                value={clampedCursor}
+                onChange={(event) => handleSeek(Number(event.target.value))}
+                className="w-full accent-emerald-400"
+              />
+              <div className="flex flex-wrap gap-2 text-xs text-slate-300">
+                <span className="rounded border border-slate-800 px-2 py-1">
+                  Скорость: {playbackSpeed}
+                </span>
+                <span className="rounded border border-slate-800 px-2 py-1">
+                  Обновление каждые ~{updateIntervalMs} мс
+                </span>
+              </div>
+            </div>
           </div>
         )}
         {connectionError && (
