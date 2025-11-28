@@ -371,7 +371,9 @@ export function PriceChart({ symbol, trades, orders }: PriceChartProps) {
               <select
                 id="speed-select"
                 value={playbackSpeed}
-                onChange={(event) => setPlaybackSpeed(Number(event.target.value))}
+                onChange={(event) =>
+                  setPlaybackSpeed(Number(event.target.value))
+                }
               >
                 <option value={1}>1x</option>
                 <option value={2}>2x</option>
@@ -384,7 +386,9 @@ export function PriceChart({ symbol, trades, orders }: PriceChartProps) {
                 min={1}
                 max={Math.max(1, aggregatedCandles.length)}
                 value={visibleCount}
-                onChange={(event) => setVisibleCount(Number(event.target.value))}
+                onChange={(event) =>
+                  setVisibleCount(Number(event.target.value))
+                }
               />
               <span className="control-label">
                 Кадров: {visibleCount} / {aggregatedCandles.length}

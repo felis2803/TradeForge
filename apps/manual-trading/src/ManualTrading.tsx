@@ -1,4 +1,11 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 const exchanges = ['Binance', 'Bybit', 'OKX', 'Bitget'];
 const instruments = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'];
@@ -66,7 +73,9 @@ function computeLiqPrice(avgPrice: number, size: number, markPrice?: number) {
 }
 
 function computePnl(position: Position, markPrice: number) {
-  const diff = Number(((markPrice - position.avgPrice) * position.size).toFixed(2));
+  const diff = Number(
+    ((markPrice - position.avgPrice) * position.size).toFixed(2),
+  );
   const notional = Math.max(1, Math.abs(position.avgPrice * position.size));
   const pct = Number(((diff / notional) * 100).toFixed(2));
   return { diff, pct };
@@ -120,14 +129,18 @@ function aggregateSide(
   const buckets = new Map<string, number>();
 
   for (const { price, size } of levels) {
-    if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) continue;
+    if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0)
+      continue;
     const priceKey = price.toFixed(3);
     const nextSize = (buckets.get(priceKey) ?? 0) + size;
     buckets.set(priceKey, nextSize);
   }
 
   const sorted = Array.from(buckets.entries())
-    .map(([price, size]) => ({ price: Number(price), size: Number(size.toFixed(3)) }))
+    .map(([price, size]) => ({
+      price: Number(price),
+      size: Number(size.toFixed(3)),
+    }))
     .sort((left, right) =>
       side === 'bids' ? right.price - left.price : left.price - right.price,
     );
@@ -439,14 +452,13 @@ export default function ManualTrading(): JSX.Element {
     { instrument: 'BTC/USDT', size: 0.5, avgPrice: 64600, liqPrice: 52000 },
     { instrument: 'SOL/USDT', size: 120, avgPrice: 158, liqPrice: 96 },
   ]);
-  const [markPrices, setMarkPrices] = useState<Record<string, number>>(
-    () =>
-      Object.fromEntries(
-        instruments.map((instrument) => [
-          instrument,
-          getProfile(instrument).basePrice,
-        ]),
-      ),
+  const [markPrices, setMarkPrices] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      instruments.map((instrument) => [
+        instrument,
+        getProfile(instrument).basePrice,
+      ]),
+    ),
   );
   const [positionEvents, setPositionEvents] = useState<
     { id: string; message: string; timestamp: Date }[]
@@ -565,13 +577,10 @@ export default function ManualTrading(): JSX.Element {
     [selectedInstrument],
   );
 
-  const notionalPreview = useMemo(
-    () => {
-      const priceRef = orderType === 'market' ? ticker.last : orderPrice;
-      return Number((priceRef * orderSize).toFixed(2));
-    },
-    [orderPrice, orderSize, orderType, ticker.last],
-  );
+  const notionalPreview = useMemo(() => {
+    const priceRef = orderType === 'market' ? ticker.last : orderPrice;
+    return Number((priceRef * orderSize).toFixed(2));
+  }, [orderPrice, orderSize, orderType, ticker.last]);
 
   const markPriceForInstrument = (instrument: string) =>
     markPrices[instrument] ?? getProfile(instrument).basePrice;
@@ -685,18 +694,21 @@ export default function ManualTrading(): JSX.Element {
       let nextBalance = prevBalance;
       filledOrders.forEach((order) => {
         const fillPrice =
-          order.executionPrice ?? order.price ?? markPriceForInstrument(order.instrument);
+          order.executionPrice ??
+          order.price ??
+          markPriceForInstrument(order.instrument);
         const notional = (fillPrice ?? 0) * order.size;
         const fee = notional * FEE_RATE;
-        nextBalance +=
-          order.side === 'sell' ? notional - fee : -notional - fee;
+        nextBalance += order.side === 'sell' ? notional - fee : -notional - fee;
       });
       return Number(Math.max(0, nextBalance).toFixed(2));
     });
 
     filledOrders.forEach((order) => {
       const fillPrice =
-        order.executionPrice ?? order.price ?? markPriceForInstrument(order.instrument);
+        order.executionPrice ??
+        order.price ??
+        markPriceForInstrument(order.instrument);
       addPositionEvent(
         `Исполнено ${order.side === 'buy' ? 'покупка' : 'продажа'} ${order.instrument} ${order.size} @ ${fillPrice?.toLocaleString('ru-RU')}`,
       );
@@ -722,13 +734,23 @@ export default function ManualTrading(): JSX.Element {
     const ratio = timelineMaxIndex > 0 ? clampedCursor / timelineMaxIndex : 0;
     const cursorMs = startMs + (endMs - startMs) * ratio;
     return new Date(cursorMs).toLocaleString('ru-RU');
-  }, [clampedCursor, periodEnd, periodStart, timeline.length, timelineMaxIndex]);
+  }, [
+    clampedCursor,
+    periodEnd,
+    periodStart,
+    timeline.length,
+    timelineMaxIndex,
+  ]);
 
   useEffect(() => {
     if (dataUnavailable || !isPlaying) return;
 
     const intervalId = window.setInterval(() => {
-      const nextTicker = mutateTicker(tickerRef.current, selectedInstrument, dataMode);
+      const nextTicker = mutateTicker(
+        tickerRef.current,
+        selectedInstrument,
+        dataMode,
+      );
       const priceForChildren = nextTicker.last;
       const nextTrades = mutateTrades(
         tradesRef.current,
@@ -858,7 +880,9 @@ export default function ManualTrading(): JSX.Element {
         `Позиция ${order.instrument} ликвидирована по ${order.executionPrice?.toLocaleString('ru-RU')}`,
       );
     });
-    setConnectionMessage('Произошла ликвидация позиции из-за недостаточной маржи.');
+    setConnectionMessage(
+      'Произошла ликвидация позиции из-за недостаточной маржи.',
+    );
   }, [markPrices, positions]);
 
   const handleConnect = () => {
@@ -1009,7 +1033,9 @@ export default function ManualTrading(): JSX.Element {
     const errors: string[] = [];
     const normalizedSize = Number(orderSize.toFixed(rules.sizePrecision));
     const priceReference =
-      orderType === 'market' ? ticker.last : Number(orderPrice.toFixed(rules.pricePrecision));
+      orderType === 'market'
+        ? ticker.last
+        : Number(orderPrice.toFixed(rules.pricePrecision));
 
     if (!Number.isFinite(normalizedSize) || normalizedSize <= 0) {
       errors.push('Укажите размер позиции.');
@@ -1021,12 +1047,20 @@ export default function ManualTrading(): JSX.Element {
       errors.push(`Максимальный размер: ${rules.maxSize}.`);
     }
     if (countPrecision(normalizedSize) > rules.sizePrecision) {
-      errors.push(`Доступная точность размера: до ${rules.sizePrecision} знаков.`);
+      errors.push(
+        `Доступная точность размера: до ${rules.sizePrecision} знаков.`,
+      );
     }
-    if (orderType !== 'market' && (!Number.isFinite(priceReference) || priceReference <= 0)) {
+    if (
+      orderType !== 'market' &&
+      (!Number.isFinite(priceReference) || priceReference <= 0)
+    ) {
       errors.push('Цена должна быть положительным числом.');
     }
-    if (orderType !== 'market' && countPrecision(priceReference) > rules.pricePrecision) {
+    if (
+      orderType !== 'market' &&
+      countPrecision(priceReference) > rules.pricePrecision
+    ) {
       errors.push(`Точность цены ограничена ${rules.pricePrecision} знаками.`);
     }
 
@@ -1115,21 +1149,19 @@ export default function ManualTrading(): JSX.Element {
     );
   };
 
-  const normalizedOrderBook = useMemo(
-    () => {
-      const bids = aggregateSide(orderBook.bids, 'bids');
-      const asks = aggregateSide(orderBook.asks, 'asks');
+  const normalizedOrderBook = useMemo(() => {
+    const bids = aggregateSide(orderBook.bids, 'bids');
+    const asks = aggregateSide(orderBook.asks, 'asks');
 
-      return {
-        bids: bids.levels,
-        asks: asks.levels,
-        truncated:
-          bids.uniqueLevels > ORDERBOOK_DEPTH || asks.uniqueLevels > ORDERBOOK_DEPTH,
-        totalLevels: bids.uniqueLevels + asks.uniqueLevels,
-      };
-    },
-    [orderBook],
-  );
+    return {
+      bids: bids.levels,
+      asks: asks.levels,
+      truncated:
+        bids.uniqueLevels > ORDERBOOK_DEPTH ||
+        asks.uniqueLevels > ORDERBOOK_DEPTH,
+      totalLevels: bids.uniqueLevels + asks.uniqueLevels,
+    };
+  }, [orderBook]);
 
   const totalExposure = useMemo(
     () =>
@@ -1533,7 +1565,11 @@ export default function ManualTrading(): JSX.Element {
                         key={`bid-${row.price}`}
                         className="flex cursor-pointer items-center justify-between rounded border border-slate-800 bg-emerald-500/5 px-3 py-1.5 text-emerald-100 hover:border-emerald-400/60"
                         onClick={() =>
-                          handleSelectPrice(row.price, 'ордера на покупку', 'sell')
+                          handleSelectPrice(
+                            row.price,
+                            'ордера на покупку',
+                            'sell',
+                          )
                         }
                         title="Поставить лучшую покупку как цену продажи"
                       >
@@ -1553,7 +1589,11 @@ export default function ManualTrading(): JSX.Element {
                         key={`ask-${row.price}`}
                         className="flex cursor-pointer items-center justify-between rounded border border-slate-800 bg-red-500/5 px-3 py-1.5 text-red-100 hover:border-red-400/60"
                         onClick={() =>
-                          handleSelectPrice(row.price, 'ордера на продажу', 'buy')
+                          handleSelectPrice(
+                            row.price,
+                            'ордера на продажу',
+                            'buy',
+                          )
                         }
                         title="Поставить лучшую продажу как цену покупки"
                       >
@@ -1566,7 +1606,8 @@ export default function ManualTrading(): JSX.Element {
                   </div>
                   {normalizedOrderBook.truncated ? (
                     <p className="col-span-2 text-xs text-slate-400">
-                      Показаны топ-{ORDERBOOK_DEPTH} уровней (агрегация по цене, всего {normalizedOrderBook.totalLevels}).
+                      Показаны топ-{ORDERBOOK_DEPTH} уровней (агрегация по цене,
+                      всего {normalizedOrderBook.totalLevels}).
                     </p>
                   ) : null}
                 </div>
@@ -1637,7 +1678,9 @@ export default function ManualTrading(): JSX.Element {
               <span className="text-slate-300">Сторона</span>
               <select
                 value={orderSide}
-                onChange={(event) => setOrderSide(event.target.value as OrderSide)}
+                onChange={(event) =>
+                  setOrderSide(event.target.value as OrderSide)
+                }
                 className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 focus:border-emerald-400 focus:outline-none"
               >
                 <option value="buy">Покупка</option>
@@ -1701,11 +1744,12 @@ export default function ManualTrading(): JSX.Element {
             )}
             <div className="flex items-center justify-between text-xs text-slate-400">
               <span>
-                Нотионал: <strong>{notionalPreview.toLocaleString('ru-RU')}</strong>{' '}
-                USDT
+                Нотионал:{' '}
+                <strong>{notionalPreview.toLocaleString('ru-RU')}</strong> USDT
               </span>
               <span>
-                Доступно: <strong>{balance.toLocaleString('ru-RU')}</strong> USDT
+                Доступно: <strong>{balance.toLocaleString('ru-RU')}</strong>{' '}
+                USDT
               </span>
             </div>
             {orderErrors.length > 0 && (
@@ -1791,7 +1835,8 @@ export default function ManualTrading(): JSX.Element {
                     </span>
                     {order.executionPrice && (
                       <span className="text-xs text-slate-400">
-                        исполнено по {order.executionPrice.toLocaleString('ru-RU')}
+                        исполнено по{' '}
+                        {order.executionPrice.toLocaleString('ru-RU')}
                       </span>
                     )}
                     {order.status === 'active' && (
@@ -1859,14 +1904,18 @@ export default function ManualTrading(): JSX.Element {
                         <div className="flex flex-wrap gap-2 text-xs text-slate-300">
                           <button
                             type="button"
-                            onClick={() => handleClosePosition(position.instrument)}
+                            onClick={() =>
+                              handleClosePosition(position.instrument)
+                            }
                             className="rounded border border-slate-700 px-2 py-1 text-[11px] font-semibold hover:border-emerald-400 hover:text-emerald-200"
                           >
                             Закрыть
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleReversePosition(position.instrument)}
+                            onClick={() =>
+                              handleReversePosition(position.instrument)
+                            }
                             className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:border-amber-400 hover:bg-amber-500/10"
                           >
                             Реверс
@@ -1912,7 +1961,10 @@ export default function ManualTrading(): JSX.Element {
                 История действий
               </p>
               {positionEvents.map((event) => (
-                <div key={event.id} className="flex items-center justify-between">
+                <div
+                  key={event.id}
+                  className="flex items-center justify-between"
+                >
                   <span>{event.message}</span>
                   <span className="text-[11px] text-slate-500">
                     {event.timestamp.toLocaleTimeString('ru-RU', {
@@ -1952,7 +2004,8 @@ export default function ManualTrading(): JSX.Element {
                   </p>
                   {order.executionPrice && (
                     <p className="text-xs text-slate-400">
-                      Исполнено по {order.executionPrice.toLocaleString('ru-RU')}
+                      Исполнено по{' '}
+                      {order.executionPrice.toLocaleString('ru-RU')}
                     </p>
                   )}
                 </div>
