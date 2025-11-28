@@ -57,6 +57,20 @@ interface DepthRow {
 }
 
 const ORDERBOOK_DEPTH = 12;
+const FEE_RATE = 0.0004;
+
+function computeLiqPrice(avgPrice: number, size: number, markPrice?: number) {
+  const reference = Math.min(avgPrice, markPrice ?? avgPrice);
+  const riskClamp = Math.max(0.35, 0.6 - Math.min(0.2, Math.abs(size) * 0.01));
+  return Number((reference * riskClamp).toFixed(2));
+}
+
+function computePnl(position: Position, markPrice: number) {
+  const diff = Number(((markPrice - position.avgPrice) * position.size).toFixed(2));
+  const notional = Math.max(1, Math.abs(position.avgPrice * position.size));
+  const pct = Number(((diff / notional) * 100).toFixed(2));
+  return { diff, pct };
+}
 
 const instrumentTradingRules: Record<
   string,
@@ -423,6 +437,18 @@ export default function ManualTrading(): JSX.Element {
     { instrument: 'BTC/USDT', size: 0.5, avgPrice: 64600, liqPrice: 52000 },
     { instrument: 'SOL/USDT', size: 120, avgPrice: 158, liqPrice: 96 },
   ]);
+  const [markPrices, setMarkPrices] = useState<Record<string, number>>(
+    () =>
+      Object.fromEntries(
+        instruments.map((instrument) => [
+          instrument,
+          getProfile(instrument).basePrice,
+        ]),
+      ),
+  );
+  const [positionEvents, setPositionEvents] = useState<
+    { id: string; message: string; timestamp: Date }[]
+  >([]);
   const [connectionMessage, setConnectionMessage] = useState<string>('');
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [ticker, setTicker] = useState<TickerSnapshot>(() =>
@@ -511,6 +537,13 @@ export default function ManualTrading(): JSX.Element {
     setLastUpdateAt(null);
   }, [selectedInstrument]);
 
+  useEffect(() => {
+    setMarkPrices((previous) => ({
+      ...previous,
+      [selectedInstrument]: ticker.last,
+    }));
+  }, [selectedInstrument, ticker.last]);
+
   const orderRules = useMemo(
     () => getTradingRules(selectedInstrument),
     [selectedInstrument],
@@ -524,6 +557,18 @@ export default function ManualTrading(): JSX.Element {
     [orderPrice, orderSize, orderType, ticker.last],
   );
 
+  const markPriceForInstrument = (instrument: string) =>
+    markPrices[instrument] ?? getProfile(instrument).basePrice;
+
+  const addPositionEvent = (message: string) => {
+    setPositionEvents((previous) =>
+      [
+        { id: `evt-${Date.now()}`, message, timestamp: new Date() },
+        ...previous,
+      ].slice(0, 6),
+    );
+  };
+
   const applyFills = (filledOrders: Order[]) => {
     if (!filledOrders.length) return;
 
@@ -531,7 +576,8 @@ export default function ManualTrading(): JSX.Element {
       const next = [...prev];
 
       filledOrders.forEach((order) => {
-        const fillPrice = order.executionPrice ?? order.price ?? ticker.last;
+        const markPrice = markPriceForInstrument(order.instrument);
+        const fillPrice = order.executionPrice ?? order.price ?? markPrice;
         const signedSize = order.side === 'buy' ? order.size : -order.size;
         const existingIndex = next.findIndex(
           (pos) => pos.instrument === order.instrument,
@@ -560,6 +606,7 @@ export default function ManualTrading(): JSX.Element {
             ...existing,
             size: newSize,
             avgPrice: Number(newAvgPrice),
+            liqPrice: computeLiqPrice(newAvgPrice, newSize, markPrice),
           };
           return;
         }
@@ -568,7 +615,11 @@ export default function ManualTrading(): JSX.Element {
           instrument: order.instrument,
           size: Number(signedSize.toFixed(3)),
           avgPrice: fillPrice ?? getProfile(order.instrument).basePrice,
-          liqPrice: Number(((fillPrice ?? 0) * 0.6).toFixed(3)),
+          liqPrice: computeLiqPrice(
+            fillPrice ?? getProfile(order.instrument).basePrice,
+            signedSize,
+            markPrice,
+          ),
         });
       });
 
@@ -578,11 +629,22 @@ export default function ManualTrading(): JSX.Element {
     setBalance((prevBalance) => {
       let nextBalance = prevBalance;
       filledOrders.forEach((order) => {
-        const fillPrice = order.executionPrice ?? order.price ?? ticker.last;
+        const fillPrice =
+          order.executionPrice ?? order.price ?? markPriceForInstrument(order.instrument);
         const notional = (fillPrice ?? 0) * order.size;
-        nextBalance += order.side === 'sell' ? notional : -notional;
+        const fee = notional * FEE_RATE;
+        nextBalance +=
+          order.side === 'sell' ? notional - fee : -notional - fee;
       });
       return Number(Math.max(0, nextBalance).toFixed(2));
+    });
+
+    filledOrders.forEach((order) => {
+      const fillPrice =
+        order.executionPrice ?? order.price ?? markPriceForInstrument(order.instrument);
+      addPositionEvent(
+        `Исполнено ${order.side === 'buy' ? 'покупка' : 'продажа'} ${order.instrument} ${order.size} @ ${fillPrice?.toLocaleString('ru-RU')}`,
+      );
     });
   };
 
@@ -611,6 +673,10 @@ export default function ManualTrading(): JSX.Element {
       setSyntheticChart((prev) =>
         mutateChart(prev, selectedInstrument, priceForChildren),
       );
+      setMarkPrices((previous) => ({
+        ...previous,
+        [selectedInstrument]: priceForChildren,
+      }));
       setLastUpdateAt(new Date());
     }, updateIntervalMs);
 
@@ -649,6 +715,38 @@ export default function ManualTrading(): JSX.Element {
       setConnectionMessage('Есть новые исполнения по активным ордерам.');
     }
   }, [ticker]);
+
+  useEffect(() => {
+    const liquidations: Order[] = [];
+    positions.forEach((position) => {
+      const markPrice = markPriceForInstrument(position.instrument);
+      const breached =
+        position.size > 0
+          ? markPrice <= position.liqPrice
+          : markPrice >= position.liqPrice;
+      if (breached) {
+        liquidations.push({
+          id: `liq-${position.instrument}-${Date.now()}`,
+          instrument: position.instrument,
+          type: 'Market',
+          side: position.size > 0 ? 'sell' : 'buy',
+          size: Math.abs(position.size),
+          executionPrice: position.liqPrice,
+          status: 'filled',
+        });
+      }
+    });
+
+    if (!liquidations.length) return;
+
+    applyFills(liquidations);
+    liquidations.forEach((order) => {
+      addPositionEvent(
+        `Позиция ${order.instrument} ликвидирована по ${order.executionPrice?.toLocaleString('ru-RU')}`,
+      );
+    });
+    setConnectionMessage('Произошла ликвидация позиции из-за недостаточной маржи.');
+  }, [markPrices, positions]);
 
   const handleConnect = () => {
     setConnectionError(null);
@@ -690,6 +788,75 @@ export default function ManualTrading(): JSX.Element {
 
     setConnectionMessage(
       `Realtime поток на ${selectedExchange}. Баланс и позиции инициализированы на ${balance.toLocaleString('ru-RU')} USDT`,
+    );
+  };
+
+  const handlePriceShock = (direction: 'up' | 'down') => {
+    setTicker((previous) => {
+      const factor = direction === 'up' ? 1.08 : 0.55;
+      const nextLast = Number((previous.last * factor).toFixed(2));
+      const next = {
+        ...previous,
+        last: nextLast,
+        change: Number(((nextLast - previous.last) / previous.last) * 100),
+        high: Math.max(previous.high, nextLast),
+        low: Math.min(previous.low, nextLast),
+      } satisfies TickerSnapshot;
+      setMarkPrices((current) => ({
+        ...current,
+        [selectedInstrument]: nextLast,
+      }));
+      return next;
+    });
+  };
+
+  const handleClosePosition = (instrument: string) => {
+    const existing = positions.find((pos) => pos.instrument === instrument);
+    if (!existing) return;
+    const markPrice = markPriceForInstrument(instrument);
+    applyFills([
+      {
+        id: `close-${instrument}-${Date.now()}`,
+        instrument,
+        type: 'Market',
+        side: existing.size > 0 ? 'sell' : 'buy',
+        size: Math.abs(existing.size),
+        executionPrice: markPrice,
+        status: 'filled',
+      },
+    ]);
+    addPositionEvent(
+      `Позиция ${instrument} закрыта по ${markPrice.toLocaleString('ru-RU')}`,
+    );
+  };
+
+  const handleReversePosition = (instrument: string) => {
+    const existing = positions.find((pos) => pos.instrument === instrument);
+    if (!existing) return;
+    const markPrice = markPriceForInstrument(instrument);
+    const side = existing.size > 0 ? 'sell' : 'buy';
+    applyFills([
+      {
+        id: `reverse-close-${instrument}-${Date.now()}`,
+        instrument,
+        type: 'Market',
+        side,
+        size: Math.abs(existing.size),
+        executionPrice: markPrice,
+        status: 'filled',
+      },
+      {
+        id: `reverse-open-${instrument}-${Date.now()}`,
+        instrument,
+        type: 'Market',
+        side,
+        size: Math.abs(existing.size),
+        executionPrice: markPrice,
+        status: 'filled',
+      },
+    ]);
+    addPositionEvent(
+      `Позиция ${instrument} развернута: ${(-existing.size).toFixed(3)} @ ${markPrice.toLocaleString('ru-RU')}`,
     );
   };
 
@@ -935,6 +1102,20 @@ export default function ManualTrading(): JSX.Element {
               className="rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Вернуть поток
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePriceShock('up')}
+              className="rounded-md border border-emerald-500/70 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 hover:border-emerald-400 hover:bg-emerald-500/20"
+            >
+              Памп цены
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePriceShock('down')}
+              className="rounded-md border border-red-500/70 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-400 hover:bg-red-500/20"
+            >
+              Обвал цены
             </button>
           </div>
         </div>
@@ -1469,44 +1650,104 @@ export default function ManualTrading(): JSX.Element {
                 key={position.instrument}
                 className="flex items-center justify-between rounded border border-slate-800 bg-slate-950/60 px-3 py-2"
               >
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">
-                    {position.instrument}
-                  </p>
-                  <p className="text-slate-100">
-                    Размер:{' '}
-                    <span className="font-semibold">{position.size}</span>
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    Доля баланса:{' '}
-                    <span className="font-semibold text-emerald-200">
-                      {balance > 0
-                        ? (
-                            ((position.size * position.avgPrice) / balance) *
-                            100
-                          ).toFixed(2)
-                        : '0.00'}
-                      %
-                    </span>
-                  </p>
-                </div>
-                <div className="text-right text-xs text-slate-300">
-                  <p>
-                    Средняя цена:{' '}
-                    <span className="font-semibold text-slate-100">
-                      {position.avgPrice.toLocaleString('ru-RU')}
-                    </span>
-                  </p>
-                  <p>
-                    Ликвидация:{' '}
-                    <span className="font-semibold text-red-300">
-                      {position.liqPrice.toLocaleString('ru-RU')}
-                    </span>
-                  </p>
-                </div>
+                {(() => {
+                  const markPrice = markPriceForInstrument(position.instrument);
+                  const { diff, pct } = computePnl(position, markPrice);
+                  const computedLiq = computeLiqPrice(
+                    position.avgPrice,
+                    position.size,
+                    markPrice,
+                  );
+                  return (
+                    <>
+                      <div className="space-y-1">
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          {position.instrument}
+                        </p>
+                        <p className="text-slate-100">
+                          Размер:{' '}
+                          <span className="font-semibold">{position.size}</span>
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Доля баланса:{' '}
+                          <span className="font-semibold text-emerald-200">
+                            {balance > 0
+                              ? (
+                                  ((position.size * position.avgPrice) /
+                                    balance) *
+                                  100
+                                ).toFixed(2)
+                              : '0.00'}
+                            %
+                          </span>
+                        </p>
+                        <div className="flex flex-wrap gap-2 text-xs text-slate-300">
+                          <button
+                            type="button"
+                            onClick={() => handleClosePosition(position.instrument)}
+                            className="rounded border border-slate-700 px-2 py-1 text-[11px] font-semibold hover:border-emerald-400 hover:text-emerald-200"
+                          >
+                            Закрыть
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleReversePosition(position.instrument)}
+                            className="rounded border border-amber-500/50 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:border-amber-400 hover:bg-amber-500/10"
+                          >
+                            Реверс
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-right text-xs text-slate-300">
+                        <p>
+                          Средняя цена:{' '}
+                          <span className="font-semibold text-slate-100">
+                            {position.avgPrice.toLocaleString('ru-RU')}
+                          </span>
+                        </p>
+                        <p>
+                          Ликвидация:{' '}
+                          <span className="font-semibold text-red-300">
+                            {computedLiq.toLocaleString('ru-RU')}
+                          </span>
+                        </p>
+                        <p
+                          className={
+                            diff >= 0
+                              ? 'font-semibold text-emerald-300'
+                              : 'font-semibold text-red-300'
+                          }
+                        >
+                          PnL: {diff >= 0 ? '+' : ''}
+                          {diff.toLocaleString('ru-RU')} ({pct}%)
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          Mark: {markPrice.toLocaleString('ru-RU')}
+                        </p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             ))}
           </div>
+          {positionEvents.length > 0 && (
+            <div className="mt-3 space-y-1 rounded border border-slate-800 bg-slate-950/60 p-3 text-xs text-slate-200">
+              <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                История действий
+              </p>
+              {positionEvents.map((event) => (
+                <div key={event.id} className="flex items-center justify-between">
+                  <span>{event.message}</span>
+                  <span className="text-[11px] text-slate-500">
+                    {event.timestamp.toLocaleTimeString('ru-RU', {
+                      hour12: false,
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-5 shadow-lg shadow-slate-900/40">
