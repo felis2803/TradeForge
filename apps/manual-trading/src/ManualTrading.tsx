@@ -1197,7 +1197,7 @@ export default function ManualTrading(): JSX.Element {
             Beta
           </span>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(280px,1fr)] xl:items-end">
           <label className="space-y-2">
             <span className="text-sm text-slate-300">Биржа</span>
             <select
@@ -1214,7 +1214,7 @@ export default function ManualTrading(): JSX.Element {
           </label>
           <label className="space-y-2">
             <span className="text-sm text-slate-300">Режим данных</span>
-            <div className="flex rounded-md border border-slate-700 bg-slate-950 p-1 text-sm">
+            <div className="flex min-w-[240px] rounded-md border border-slate-700 bg-slate-950 p-1 text-sm">
               {(['history', 'realtime'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -1244,11 +1244,11 @@ export default function ManualTrading(): JSX.Element {
               className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
             />
           </label>
-          <div className="flex items-end justify-end gap-2">
+          <div className="flex flex-wrap items-end justify-end gap-2">
             <button
               type="button"
               onClick={handleConnect}
-              className="w-full rounded-md border border-emerald-500 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20 md:w-auto"
+              className="w-full min-w-[150px] max-w-[220px] rounded-md border border-emerald-500 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20 md:w-auto"
             >
               Подключиться
             </button>
