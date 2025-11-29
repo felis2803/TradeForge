@@ -17,3 +17,24 @@ body {
     'Segoe UI',
     sans-serif;
 }
+
+.start-balance-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.start-balance-button {
+  min-width: 180px;
+}
+
+@media (max-width: 800px) {
+  .start-balance-actions {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .start-balance-button {
+    margin-bottom: 0.25rem;
+  }
+}

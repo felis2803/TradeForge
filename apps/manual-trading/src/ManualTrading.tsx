@@ -1231,74 +1231,76 @@ export default function ManualTrading(): JSX.Element {
               ))}
             </div>
           </label>
-          <label className="space-y-2">
-            <span className="text-sm text-slate-300">
-              Стартовый баланс (USDT)
-            </span>
-            <input
-              type="number"
-              min={100}
-              step={100}
-              value={balance}
-              onChange={(event) => setBalance(Number(event.target.value))}
-              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
-            />
-          </label>
-          <div className="flex flex-wrap items-end justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleConnect}
-              className="w-full min-w-[150px] max-w-[220px] rounded-md border border-emerald-500 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20 md:w-auto"
-            >
-              Подключиться
-            </button>
-            <button
-              type="button"
-              onClick={handleSimulateOutage}
-              className="rounded-md border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-400/20"
-            >
-              Симулировать обрыв
-            </button>
-            <button
-              type="button"
-              disabled={!dataUnavailable}
-              onClick={handleResumeStream}
-              className="rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Вернуть поток
-            </button>
-            <button
-              type="button"
-              onClick={handleTogglePlayback}
-              className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${
-                isPlaying
-                  ? 'border-emerald-500/70 text-emerald-200 hover:border-emerald-400'
-                  : 'border-slate-700 text-slate-200 hover:border-emerald-400 hover:text-emerald-200'
-              }`}
-            >
-              {isPlaying ? 'Пауза' : 'Возобновить'}
-            </button>
-            <button
-              type="button"
-              onClick={handleStopPlayback}
-              className="rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-amber-400 hover:text-amber-200"
-            >
-              Стоп
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePriceShock('up')}
-              className="rounded-md border border-emerald-500/70 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 hover:border-emerald-400 hover:bg-emerald-500/20"
-            >
-              Памп цены
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePriceShock('down')}
-              className="rounded-md border border-red-500/70 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-400 hover:bg-red-500/20"
-            >
-              Обвал цены
-            </button>
+          <div className="md:col-span-2 xl:col-span-1 grid gap-3">
+            <label className="space-y-2">
+              <span className="text-sm text-slate-300">
+                Стартовый баланс (USDT)
+              </span>
+              <input
+                type="number"
+                min={100}
+                step={100}
+                value={balance}
+                onChange={(event) => setBalance(Number(event.target.value))}
+                className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
+              />
+            </label>
+            <div className="start-balance-actions">
+              <button
+                type="button"
+                onClick={handleConnect}
+                className="start-balance-button rounded-md border border-emerald-500 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20"
+              >
+                Подключиться
+              </button>
+              <button
+                type="button"
+                onClick={handleSimulateOutage}
+                className="start-balance-button rounded-md border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-400/20"
+              >
+                Симулировать обрыв
+              </button>
+              <button
+                type="button"
+                disabled={!dataUnavailable}
+                onClick={handleResumeStream}
+                className="start-balance-button rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Вернуть поток
+              </button>
+              <button
+                type="button"
+                onClick={handleTogglePlayback}
+                className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                  isPlaying
+                    ? 'border-emerald-500/70 text-emerald-200 hover:border-emerald-400'
+                    : 'border-slate-700 text-slate-200 hover:border-emerald-400 hover:text-emerald-200'
+                }`}
+              >
+                {isPlaying ? 'Пауза' : 'Возобновить'}
+              </button>
+              <button
+                type="button"
+                onClick={handleStopPlayback}
+                className="rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-amber-400 hover:text-amber-200"
+              >
+                Стоп
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePriceShock('up')}
+                className="rounded-md border border-emerald-500/70 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-200 hover:border-emerald-400 hover:bg-emerald-500/20"
+              >
+                Памп цены
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePriceShock('down')}
+                className="rounded-md border border-red-500/70 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200 hover:border-red-400 hover:bg-red-500/20"
+              >
+                Обвал цены
+              </button>
+            </div>
           </div>
         </div>
         {dataMode === 'history' && (
