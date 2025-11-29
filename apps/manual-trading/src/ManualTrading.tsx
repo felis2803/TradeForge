@@ -448,6 +448,10 @@ export default function ManualTrading(): JSX.Element {
   const [orderSubmitState, setOrderSubmitState] = useState<
     'idle' | 'pending' | 'sent' | 'error'
   >('idle');
+  const [fieldErrors, setFieldErrors] = useState<{
+    size?: string[];
+    price?: string[];
+  }>({});
   const [positions, setPositions] = useState<Position[]>([
     { instrument: 'BTC/USDT', size: 0.5, avgPrice: 64600, liqPrice: 52000 },
     { instrument: 'SOL/USDT', size: 120, avgPrice: 158, liqPrice: 96 },
@@ -1027,10 +1031,13 @@ export default function ManualTrading(): JSX.Element {
   const handleSubmitOrder = (event: FormEvent) => {
     event.preventDefault();
     setOrderErrors([]);
+    setFieldErrors({});
     setOrderSubmitState('pending');
 
     const rules = getTradingRules(selectedInstrument);
     const errors: string[] = [];
+    const sizeErrors: string[] = [];
+    const priceErrors: string[] = [];
     const normalizedSize = Number(orderSize.toFixed(rules.sizePrecision));
     const priceReference =
       orderType === 'market'
@@ -1038,16 +1045,16 @@ export default function ManualTrading(): JSX.Element {
         : Number(orderPrice.toFixed(rules.pricePrecision));
 
     if (!Number.isFinite(normalizedSize) || normalizedSize <= 0) {
-      errors.push('Укажите размер позиции.');
+      sizeErrors.push('Укажите размер позиции.');
     }
     if (normalizedSize < rules.minSize) {
-      errors.push(`Минимальный размер: ${rules.minSize}.`);
+      sizeErrors.push(`Минимальный размер: ${rules.minSize}.`);
     }
     if (normalizedSize > rules.maxSize) {
-      errors.push(`Максимальный размер: ${rules.maxSize}.`);
+      sizeErrors.push(`Максимальный размер: ${rules.maxSize}.`);
     }
     if (countPrecision(normalizedSize) > rules.sizePrecision) {
-      errors.push(
+      sizeErrors.push(
         `Доступная точность размера: до ${rules.sizePrecision} знаков.`,
       );
     }
@@ -1055,13 +1062,15 @@ export default function ManualTrading(): JSX.Element {
       orderType !== 'market' &&
       (!Number.isFinite(priceReference) || priceReference <= 0)
     ) {
-      errors.push('Цена должна быть положительным числом.');
+      priceErrors.push('Цена должна быть положительным числом.');
     }
     if (
       orderType !== 'market' &&
       countPrecision(priceReference) > rules.pricePrecision
     ) {
-      errors.push(`Точность цены ограничена ${rules.pricePrecision} знаками.`);
+      priceErrors.push(
+        `Точность цены ограничена ${rules.pricePrecision} знаками.`,
+      );
     }
 
     const notional = Number((priceReference * normalizedSize).toFixed(2));
@@ -1075,8 +1084,13 @@ export default function ManualTrading(): JSX.Element {
       errors.push('Данные недоступны — нельзя отправить ордер.');
     }
 
-    if (errors.length) {
-      setOrderErrors(errors);
+    const mergedErrors = [...errors, ...sizeErrors, ...priceErrors];
+    if (mergedErrors.length) {
+      setOrderErrors(mergedErrors);
+      setFieldErrors({
+        size: sizeErrors.length ? sizeErrors : undefined,
+        price: priceErrors.length ? priceErrors : undefined,
+      });
       setOrderSubmitState('error');
       return;
     }
@@ -1720,8 +1734,18 @@ export default function ManualTrading(): JSX.Element {
                     ),
                   )
                 }
+                onInvalid={(event) => event.preventDefault()}
+                aria-invalid={Boolean(fieldErrors.size?.length)}
+                aria-describedby="order-size-help"
                 className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 focus:border-emerald-400 focus:outline-none"
               />
+              <p
+                id="order-size-help"
+                className={`text-xs ${fieldErrors.size ? 'text-red-200' : 'text-slate-400'}`}
+              >
+                {fieldErrors.size?.join(' ')
+                  ?? `Мин. ${orderRules.minSize}, макс. ${orderRules.maxSize}, точность: ${orderRules.sizePrecision} знаков.`}
+              </p>
             </label>
             {orderType !== 'market' && (
               <label className="space-y-1">
@@ -1740,54 +1764,68 @@ export default function ManualTrading(): JSX.Element {
                       ),
                     )
                   }
+                  onInvalid={(event) => event.preventDefault()}
+                  aria-invalid={Boolean(fieldErrors.price?.length)}
+                  aria-describedby="order-price-help"
                   className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 focus:border-emerald-400 focus:outline-none"
                 />
+                <p
+                  id="order-price-help"
+                  className={`text-xs ${fieldErrors.price ? 'text-red-200' : 'text-slate-400'}`}
+                >
+                  {fieldErrors.price?.join(' ')
+                    ?? `Точность: ${orderRules.pricePrecision} знаков. Для стоп- и лимит-ордеров укажите цену выше 0.`}
+                </p>
               </label>
             )}
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>
-                Нотионал:{' '}
-                <strong>{notionalPreview.toLocaleString('ru-RU')}</strong> USDT
-              </span>
-              <span>
-                Доступно: <strong>{balance.toLocaleString('ru-RU')}</strong>{' '}
-                USDT
-              </span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-900/50 px-3 py-2 text-xs text-slate-300">
+                <span>
+                  Нотионал:{' '}
+                  <strong>{notionalPreview.toLocaleString('ru-RU')}</strong> USDT
+                </span>
+                <span>
+                  Доступно: <strong>{balance.toLocaleString('ru-RU')}</strong>{' '}
+                  USDT
+                </span>
+              </div>
+              {orderErrors.length > 0 && (
+                <div className="mt-1 space-y-1 rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-100">
+                  <p className="font-semibold">Проверьте заполнение формы:</p>
+                  <ul className="list-inside list-disc space-y-0.5">
+                    {orderErrors.map((message) => (
+                      <li key={message}>{message}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-            {orderErrors.length > 0 && (
-              <div className="space-y-1 rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs text-red-100">
-                <p className="font-semibold">Проверьте заполнение формы:</p>
-                <ul className="list-inside list-disc space-y-0.5">
-                  {orderErrors.map((message) => (
-                    <li key={message}>{message}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {orderSubmitState !== 'idle' && (
-              <div
-                className={`rounded-md border px-3 py-2 text-xs font-semibold ${
-                  orderSubmitState === 'pending'
-                    ? 'border-amber-400/70 bg-amber-500/10 text-amber-200'
+            <div className="space-y-2 pt-1">
+              {orderSubmitState !== 'idle' && (
+                <div
+                  className={`rounded-md border px-3 py-2 text-xs font-semibold ${
+                    orderSubmitState === 'pending'
+                      ? 'border-amber-400/70 bg-amber-500/10 text-amber-200'
+                      : orderSubmitState === 'sent'
+                        ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-200'
+                        : 'border-red-500/70 bg-red-500/10 text-red-100'
+                  }`}
+                  aria-live="polite"
+                >
+                  {orderSubmitState === 'pending'
+                    ? 'В ожидании валидации и отправки'
                     : orderSubmitState === 'sent'
-                      ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-200'
-                      : 'border-red-500/70 bg-red-500/10 text-red-100'
-                }`}
-                aria-live="polite"
+                      ? 'Отправлен'
+                      : 'Ошибка отправки'}
+                </div>
+              )}
+              <button
+                type="submit"
+                className="w-full rounded-md border border-emerald-500 bg-emerald-500/10 px-4 py-2 font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
               >
-                {orderSubmitState === 'pending'
-                  ? 'В ожидании валидации и отправки'
-                  : orderSubmitState === 'sent'
-                    ? 'Отправлен'
-                    : 'Ошибка отправки'}
-              </div>
-            )}
-            <button
-              type="submit"
-              className="w-full rounded-md border border-emerald-500 bg-emerald-500/10 px-4 py-2 font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
-            >
-              Разместить ордер
-            </button>
+                Разместить ордер
+              </button>
+            </div>
           </form>
 
           <div className="space-y-2 text-sm">
