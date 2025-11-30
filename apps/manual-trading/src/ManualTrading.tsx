@@ -11,6 +11,20 @@ const exchanges = ['Binance', 'Bybit', 'OKX', 'Bitget'];
 const instruments = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'];
 const playbackSpeeds = ['0.25x', '0.5x', '1x', '2x', '4x'] as const;
 
+const instrumentSymbols: Record<string, string> = {
+  'BTC/USDT': 'BTCUSDT',
+  'ETH/USDT': 'ETHUSDT',
+  'SOL/USDT': 'SOLUSDT',
+  'XRP/USDT': 'XRPUSDT',
+};
+
+const coingeckoIds: Record<string, string> = {
+  'BTC/USDT': 'bitcoin',
+  'ETH/USDT': 'ethereum',
+  'SOL/USDT': 'solana',
+  'XRP/USDT': 'ripple',
+};
+
 const playbackSpeedMultiplier: Record<(typeof playbackSpeeds)[number], number> =
   {
     '0.25x': 0.25,
@@ -153,6 +167,15 @@ interface OrderBookSnapshot {
   asks: DepthRow[];
 }
 
+interface DataSnapshot {
+  instrument: string;
+  timestamp: number;
+  ticker: TickerSnapshot;
+  trades: TradeRow[];
+  orderBook: OrderBookSnapshot;
+  chart: ChartPoint[];
+}
+
 interface ChartPoint {
   price: number;
   label: string;
@@ -170,6 +193,10 @@ function getProfile(symbol: string) {
   return instrumentProfiles[symbol] ?? instrumentProfiles[instruments[0]];
 }
 
+function toVenueSymbol(instrument: string) {
+  return instrumentSymbols[instrument] ?? instrumentSymbols[instruments[0]];
+}
+
 function formatTime(date: Date) {
   return date.toLocaleTimeString('ru-RU', { hour12: false });
 }
@@ -183,6 +210,135 @@ function createTickerSnapshot(symbol: string): TickerSnapshot {
     high: basePrice * 1.001,
     low: basePrice * 0.999,
   };
+}
+
+async function fetchJsonWithTimeout<T>(
+  url: string,
+  timeoutMs = 4500,
+): Promise<T | null> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch (error) {
+    console.warn('Не удалось выполнить запрос за котировками', error);
+    return null;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function normalizeLiveTicker(
+  last: number,
+  changePct: number | undefined,
+  previous: TickerSnapshot | undefined,
+  instrument: string,
+): TickerSnapshot {
+  const profile = getProfile(instrument);
+  const volume = previous?.volume ?? profile.baseVolume;
+  const high = previous ? Math.max(previous.high, last) : last;
+  const low = previous ? Math.min(previous.low, last) : last;
+
+  return {
+    last: Number(last.toFixed(3)),
+    change: Number((changePct ?? previous?.change ?? 0).toFixed(2)),
+    volume: Number(volume.toFixed(2)),
+    high: Number(high.toFixed(3)),
+    low: Number(low.toFixed(3)),
+  };
+}
+
+async function fetchFromCoinGecko(
+  instrument: string,
+  previous?: TickerSnapshot,
+): Promise<TickerSnapshot | null> {
+  const assetId = coingeckoIds[instrument];
+  if (!assetId) return null;
+
+  const payload = await fetchJsonWithTimeout<
+    Record<string, { usd?: number; usd_24h_change?: number }>
+  >(
+    `https://api.coingecko.com/api/v3/simple/price?ids=${assetId}&vs_currencies=usd&include_24hr_change=true`,
+  );
+
+  const entry = payload?.[assetId];
+  const last = Number(entry?.usd);
+  if (!Number.isFinite(last)) return null;
+
+  const change = Number(entry?.usd_24h_change);
+  const normalizedChange = Number.isFinite(change)
+    ? Number(change.toFixed(2))
+    : previous?.change;
+
+  return normalizeLiveTicker(last, normalizedChange, previous, instrument);
+}
+
+async function fetchFromCoinbase(
+  instrument: string,
+  previous?: TickerSnapshot,
+): Promise<TickerSnapshot | null> {
+  const baseAsset = instrument.split('/')[0];
+  const payload = await fetchJsonWithTimeout<{ data?: { amount?: string } }>(
+    `https://api.coinbase.com/v2/prices/${baseAsset}-USD/spot`,
+  );
+
+  const amount = Number(payload?.data?.amount);
+  if (!Number.isFinite(amount)) return null;
+
+  return normalizeLiveTicker(amount, previous?.change, previous, instrument);
+}
+
+async function fetchFromBybit(
+  instrument: string,
+  previous?: TickerSnapshot,
+): Promise<TickerSnapshot | null> {
+  const symbol = toVenueSymbol(instrument);
+  const payload = await fetchJsonWithTimeout<{ result?: { list?: unknown[] } }>(
+    `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`,
+  );
+
+  const ticker = payload?.result?.list?.[0] as
+    | {
+        lastPrice?: string;
+        price24hPcnt?: string;
+        turnover24h?: string;
+      }
+    | undefined;
+
+  const last = Number(ticker?.lastPrice);
+  if (!Number.isFinite(last)) return null;
+
+  const changePcnt = Number(ticker?.price24hPcnt) * 100;
+  const normalized = normalizeLiveTicker(
+    last,
+    Number.isFinite(changePcnt) ? changePcnt : previous?.change,
+    previous,
+    instrument,
+  );
+
+  const turnover = Number(ticker?.turnover24h);
+  if (Number.isFinite(turnover) && turnover > 0) {
+    normalized.volume = Number(turnover.toFixed(2));
+  }
+
+  return normalized;
+}
+
+async function fetchLiveTickerSnapshot(
+  instrument: string,
+  previous?: TickerSnapshot,
+): Promise<TickerSnapshot | null> {
+  const providers = [fetchFromCoinGecko, fetchFromCoinbase, fetchFromBybit];
+
+  for (const fetcher of providers) {
+    const snapshot = await fetcher(instrument, previous);
+    if (snapshot) return snapshot;
+  }
+
+  return null;
 }
 
 function seedTrades(symbol: string): TradeRow[] {
@@ -491,15 +647,8 @@ export default function ManualTrading(): JSX.Element {
   const orderBookRef = useRef(orderBook);
   const chartRef = useRef(syntheticChart);
   const tickerRef = useRef(ticker);
-  const [timeline, setTimeline] = useState<
-    {
-      timestamp: number;
-      ticker: TickerSnapshot;
-      trades: TradeRow[];
-      orderBook: OrderBookSnapshot;
-      chart: ChartPoint[];
-    }[]
-  >([]);
+  const previousDataModeRef = useRef(dataMode);
+  const [timeline, setTimeline] = useState<DataSnapshot[]>([]);
 
   useEffect(() => {
     const saved = localStorage.getItem('manual-trading:connection');
@@ -592,13 +741,37 @@ export default function ManualTrading(): JSX.Element {
   const markPriceForInstrument = (instrument: string) =>
     markPrices[instrument] ?? getProfile(instrument).basePrice;
 
+  const pushSnapshot = useCallback(
+    (snapshot: DataSnapshot) => {
+      if (snapshot.instrument !== selectedInstrument) return;
+
+      latestPriceRef.current = snapshot.ticker.last;
+      setTicker(snapshot.ticker);
+      setTrades(snapshot.trades);
+      setOrderBook(snapshot.orderBook);
+      setSyntheticChart(snapshot.chart);
+      setMarkPrices((previous) => ({
+        ...previous,
+        [selectedInstrument]: snapshot.ticker.last,
+      }));
+      setTimeline((previous) => {
+        const nextTimeline = [...previous.slice(-299), snapshot];
+        setPlaybackCursor(nextTimeline.length - 1);
+        return nextTimeline;
+      });
+      setLastUpdateAt(new Date(snapshot.timestamp));
+    },
+    [selectedInstrument],
+  );
+
   const resetStreams = useCallback(
     (instrument = selectedInstrument, keepPlaying?: boolean) => {
       const nextTicker = createTickerSnapshot(instrument);
       const seededTrades = seedTrades(instrument);
       const seededOrderBook = seedOrderBook(instrument);
       const seededChart = seedChart(instrument);
-      const snapshot = {
+      const snapshot: DataSnapshot = {
+        instrument,
         timestamp: Date.now(),
         ticker: nextTicker,
         trades: seededTrades,
@@ -611,6 +784,10 @@ export default function ManualTrading(): JSX.Element {
       setTrades(seededTrades);
       setOrderBook(seededOrderBook);
       setSyntheticChart(seededChart);
+      setMarkPrices((previous) => ({
+        ...previous,
+        [instrument]: nextTicker.last,
+      }));
       setTimeline([snapshot]);
       setPlaybackCursor(0);
       setIsPlaying((current) => keepPlaying ?? current);
@@ -752,7 +929,56 @@ export default function ManualTrading(): JSX.Element {
   useEffect(() => {
     if (dataUnavailable || !isPlaying) return;
 
-    const intervalId = window.setInterval(() => {
+    let cancelled = false;
+    let liveUpdateInFlight = false;
+
+    const runRealtimeUpdate = async () => {
+      if (liveUpdateInFlight) return;
+      liveUpdateInFlight = true;
+
+      const liveTicker = await fetchLiveTickerSnapshot(
+        selectedInstrument,
+        tickerRef.current,
+      );
+      liveUpdateInFlight = false;
+      if (cancelled || !liveTicker) {
+        if (!cancelled) {
+          setConnectionError('Не удаётся получить цены в realtime.');
+        }
+        return;
+      }
+
+      const priceForChildren = liveTicker.last;
+      const nextTrades = mutateTrades(
+        tradesRef.current,
+        selectedInstrument,
+        'realtime',
+        priceForChildren,
+      );
+      const nextOrderBook = mutateOrderBook(
+        orderBookRef.current,
+        selectedInstrument,
+        priceForChildren,
+      );
+      const nextChart = mutateChart(
+        chartRef.current,
+        selectedInstrument,
+        priceForChildren,
+      );
+
+      setConnectionError(null);
+      setConnectionMessage('Realtime поток синхронизирован с биржей.');
+      pushSnapshot({
+        instrument: selectedInstrument,
+        timestamp: Date.now(),
+        ticker: liveTicker,
+        trades: nextTrades,
+        orderBook: nextOrderBook,
+        chart: nextChart,
+      });
+    };
+
+    const runHistoricalUpdate = () => {
       const nextTicker = mutateTicker(
         tickerRef.current,
         selectedInstrument,
@@ -776,38 +1002,57 @@ export default function ManualTrading(): JSX.Element {
         priceForChildren,
       );
 
-      latestPriceRef.current = priceForChildren;
-      setTicker(nextTicker);
-      setTrades(nextTrades);
-      setOrderBook(nextOrderBook);
-      setSyntheticChart(nextChart);
-      setMarkPrices((previous) => ({
-        ...previous,
-        [selectedInstrument]: priceForChildren,
-      }));
-      setTimeline((previous) => {
-        const nextSnapshot = {
-          timestamp: Date.now(),
-          ticker: nextTicker,
-          trades: nextTrades,
-          orderBook: nextOrderBook,
-          chart: nextChart,
-        };
-        const nextTimeline = [...previous.slice(-299), nextSnapshot];
-        setPlaybackCursor(nextTimeline.length - 1);
-        return nextTimeline;
+      pushSnapshot({
+        instrument: selectedInstrument,
+        timestamp: Date.now(),
+        ticker: nextTicker,
+        trades: nextTrades,
+        orderBook: nextOrderBook,
+        chart: nextChart,
       });
-      setLastUpdateAt(new Date());
-    }, updateIntervalMs);
+    };
 
-    return () => clearInterval(intervalId);
+    const tick = () => {
+      if (cancelled) return;
+      if (dataMode === 'realtime') {
+        runRealtimeUpdate();
+        return;
+      }
+
+      runHistoricalUpdate();
+    };
+
+    const intervalId = window.setInterval(tick, updateIntervalMs);
+    tick();
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, [
     dataUnavailable,
     dataMode,
     isPlaying,
+    pushSnapshot,
     selectedInstrument,
     updateIntervalMs,
   ]);
+
+  useEffect(() => {
+    const switchedToRealtime =
+      previousDataModeRef.current !== 'realtime' && dataMode === 'realtime';
+
+    previousDataModeRef.current = dataMode;
+
+    if (!switchedToRealtime) return;
+
+    resetStreams(selectedInstrument, true);
+    setConnectionError(null);
+    setConnectionMessage(
+      'Realtime поток перезапущен и воспроизведение возобновлено.',
+    );
+    setLastUpdateAt(new Date());
+  }, [dataMode, resetStreams, selectedInstrument]);
 
   useEffect(() => {
     const maxIndex = Math.max(0, timeline.length - 1);
@@ -817,7 +1062,7 @@ export default function ManualTrading(): JSX.Element {
     }
 
     const snapshot = timeline[playbackCursor];
-    if (!snapshot) return;
+    if (!snapshot || snapshot.instrument !== selectedInstrument) return;
 
     latestPriceRef.current = snapshot.ticker.last;
     setTicker(snapshot.ticker);
