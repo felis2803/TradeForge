@@ -80,26 +80,34 @@ export default function Bots({ apiBase }: BotsProps): JSX.Element {
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-slate-300">Активные боты: {bots.length}</div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-800 text-left text-sm">
-          <thead className="bg-slate-900/60">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-textMuted">Активные боты:</span>
+        <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+          {bots.length}
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-white/5 bg-surface/30">
+        <table className="min-w-full divide-y divide-white/5 text-left text-sm">
+          <thead className="bg-white/5">
             <tr>
-              <th className="px-3 py-2 font-medium">Имя бота</th>
-              <th className="px-3 py-2 font-medium">Начальный баланс</th>
-              <th className="px-3 py-2 font-medium">Текущий баланс</th>
+              <th className="px-4 py-3 font-medium text-textMuted">Имя бота</th>
+              <th className="px-4 py-3 font-medium text-textMuted">Начальный баланс</th>
+              <th className="px-4 py-3 font-medium text-textMuted">Текущий баланс</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-white/5">
             {bots.map((bot) => (
-              <tr key={bot.botName} className="hover:bg-slate-900/40">
-                <td className="px-3 py-2 font-medium text-slate-200">
-                  {bot.botName}
+              <tr key={bot.botName} className="hover:bg-white/5 transition-colors">
+                <td className="px-4 py-3 font-medium text-text">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-success shadow-[0_0_8px_#00FF94]" />
+                    {bot.botName}
+                  </div>
                 </td>
-                <td className="px-3 py-2 text-slate-300">
+                <td className="px-4 py-3 text-textMuted font-mono">
                   {formatBalance(bot.initialBalanceInt)}
                 </td>
-                <td className="px-3 py-2 text-slate-200">
+                <td className="px-4 py-3 font-mono font-medium text-text">
                   {formatBalance(bot.currentBalanceInt)}
                 </td>
               </tr>
@@ -108,9 +116,14 @@ export default function Bots({ apiBase }: BotsProps): JSX.Element {
               <tr>
                 <td
                   colSpan={3}
-                  className="px-3 py-6 text-center text-slate-500"
+                  className="px-4 py-8 text-center text-textMuted"
                 >
-                  Нет подключенных ботов
+                  <div className="flex flex-col items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 opacity-50">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                    </svg>
+                    <span>Нет подключенных ботов</span>
+                  </div>
                 </td>
               </tr>
             )}

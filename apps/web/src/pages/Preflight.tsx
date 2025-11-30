@@ -118,35 +118,38 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
     <form className="space-y-6" onSubmit={handleSubmit}>
       <div className="flex flex-wrap gap-4">
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-slate-300">Биржа</label>
+          <label className="text-sm font-medium text-textMuted mb-1">Биржа</label>
           <select
             value={exchange}
             onChange={(event) => setExchange(event.target.value)}
-            className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
+            className="input-field bg-surface/50 text-text"
           >
             {exchanges.map((option) => (
-              <option key={option}>{option}</option>
+              <option key={option} className="bg-surface text-text">{option}</option>
             ))}
           </select>
         </div>
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-slate-300">
+          <label className="text-sm font-medium text-textMuted mb-1">
             Оператор данных
           </label>
           <select
             value={dataOperator}
             onChange={(event) => setDataOperator(event.target.value)}
-            className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
+            className="input-field bg-surface/50 text-text"
           >
             {operators.map((option) => (
-              <option key={option}>{option}</option>
+              <option key={option} className="bg-surface text-text">{option}</option>
             ))}
           </select>
         </div>
         <div className="flex flex-col">
-          <span className="text-sm font-medium text-slate-300">Режим</span>
-          <div className="mt-1 flex gap-3 text-sm">
-            <label className="inline-flex items-center gap-2">
+          <span className="text-sm font-medium text-textMuted mb-1">Режим</span>
+          <div className="flex gap-3 text-sm h-[42px] items-center">
+            <label className="inline-flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${mode === 'realtime' ? 'border-primary' : 'border-textMuted group-hover:border-primary/50'}`}>
+                {mode === 'realtime' && <div className="w-2 h-2 rounded-full bg-primary" />}
+              </div>
               <input
                 type="radio"
                 name="mode"
@@ -156,10 +159,14 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                   setMode('realtime');
                   setDataReady(true);
                 }}
+                className="hidden"
               />
-              <span>Realtime</span>
+              <span className="text-text group-hover:text-white transition-colors">Realtime</span>
             </label>
-            <label className="inline-flex items-center gap-2">
+            <label className="inline-flex items-center gap-2 cursor-pointer group">
+              <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${mode === 'history' ? 'border-primary' : 'border-textMuted group-hover:border-primary/50'}`}>
+                {mode === 'history' && <div className="w-2 h-2 rounded-full bg-primary" />}
+              </div>
               <input
                 type="radio"
                 name="mode"
@@ -169,17 +176,18 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                   setMode('history');
                   setDataReady(false);
                 }}
+                className="hidden"
               />
-              <span>History</span>
+              <span className="text-text group-hover:text-white transition-colors">History</span>
             </label>
           </div>
         </div>
       </div>
 
       {mode === 'history' && (
-        <div className="flex flex-wrap items-end gap-4 rounded-md border border-slate-800 bg-slate-900/40 p-4">
+        <div className="flex flex-wrap items-end gap-4 rounded-xl border border-white/5 bg-surface/30 p-4 animate-fade-in">
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-slate-300">
+            <label className="text-sm font-medium text-textMuted mb-1">
               Начало периода
             </label>
             <input
@@ -191,11 +199,11 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                   from: event.target.value,
                 }))
               }
-              className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
+              className="input-field text-text"
             />
           </div>
           <div className="flex flex-col">
-            <label className="text-sm font-medium text-slate-300">
+            <label className="text-sm font-medium text-textMuted mb-1">
               Окончание периода
             </label>
             <input
@@ -204,19 +212,19 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
               onChange={(event) =>
                 setHistoryRange((prev) => ({ ...prev, to: event.target.value }))
               }
-              className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
+              className="input-field text-text"
             />
           </div>
           <button
             type="button"
             onClick={handleHistoryLoad}
-            className="rounded-md border border-emerald-500 px-4 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-500/10"
+            className="glass-button rounded-lg px-4 py-2 text-sm font-medium text-primary hover:text-white hover:bg-primary/20 hover:border-primary/30"
           >
             Загрузить
           </button>
-          <div className="text-sm text-slate-400">
+          <div className="text-sm text-textMuted pb-2">
             Статус данных:{' '}
-            <span className={dataReady ? 'text-emerald-300' : 'text-amber-300'}>
+            <span className={`font-medium ${dataReady ? 'text-success' : 'text-warning'}`}>
               {dataReady ? 'Готово' : 'Ожидание'}
             </span>
           </div>
@@ -224,30 +232,30 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
       )}
 
       <div>
-        <div className="mb-3 flex items-center justify-between text-sm font-medium text-slate-300">
+        <div className="mb-3 flex items-center justify-between text-sm font-medium text-textMuted">
           <span>Инструменты и комиссии</span>
           <button
             type="button"
             onClick={addInstrument}
-            className="rounded-md border border-slate-700 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-300 hover:bg-emerald-500/10"
+            className="glass-button rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary hover:text-white hover:bg-primary/20 hover:border-primary/30"
           >
             Добавить
           </button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-slate-800 text-sm">
-            <thead className="bg-slate-900/60 text-left">
+        <div className="overflow-hidden rounded-xl border border-white/5 bg-surface/30">
+          <table className="min-w-full divide-y divide-white/5 text-sm">
+            <thead className="bg-white/5 text-left">
               <tr>
-                <th className="px-3 py-2 font-medium">Тикер</th>
-                <th className="px-3 py-2 font-medium">Maker (bps)</th>
-                <th className="px-3 py-2 font-medium">Taker (bps)</th>
-                <th className="px-3 py-2" />
+                <th className="px-4 py-3 font-medium text-textMuted">Тикер</th>
+                <th className="px-4 py-3 font-medium text-textMuted">Maker (bps)</th>
+                <th className="px-4 py-3 font-medium text-textMuted">Taker (bps)</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-white/5">
               {instruments.map((row, index) => (
-                <tr key={index}>
-                  <td className="px-3 py-2">
+                <tr key={index} className="hover:bg-white/5 transition-colors">
+                  <td className="px-4 py-2">
                     <input
                       value={row.symbol}
                       onChange={(event) =>
@@ -257,12 +265,12 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                           event.target.value,
                         )
                       }
-                      className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
+                      className="w-full bg-transparent border-none focus:ring-0 text-text placeholder:text-textMuted/30 p-0"
                       placeholder="BTCUSDT"
                       aria-label="Тикер"
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-4 py-2">
                     <input
                       type="number"
                       step="0.01"
@@ -274,11 +282,11 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                           event.target.value,
                         )
                       }
-                      className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
+                      className="w-full bg-transparent border-none focus:ring-0 text-text p-0"
                       aria-label="Maker (bps)"
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-4 py-2">
                     <input
                       type="number"
                       step="0.01"
@@ -290,18 +298,18 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                           event.target.value,
                         )
                       }
-                      className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
+                      className="w-full bg-transparent border-none focus:ring-0 text-text p-0"
                       aria-label="Taker (bps)"
                     />
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-4 py-2 text-right">
                     {instruments.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeInstrument(index)}
-                        className="rounded-md border border-red-500 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-300 hover:bg-red-500/10"
+                        className="text-xs font-medium text-error/70 hover:text-error transition-colors"
                       >
-                        Удалить
+                        УДАЛИТЬ
                       </button>
                     )}
                   </td>
@@ -314,18 +322,18 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col text-sm">
-          <span className="font-medium text-slate-300">
+          <span className="font-medium text-textMuted mb-1">
             Лимит активных ордеров
           </span>
           <input
             type="number"
             value={maxActiveOrders}
             onChange={(event) => setMaxActiveOrders(Number(event.target.value))}
-            className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
+            className="input-field text-text"
           />
         </label>
         <label className="flex flex-col text-sm">
-          <span className="font-medium text-slate-300">
+          <span className="font-medium text-textMuted mb-1">
             Таймаут heartbeat (сек)
           </span>
           <input
@@ -334,21 +342,21 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
             onChange={(event) =>
               setHeartbeatTimeoutSec(Number(event.target.value))
             }
-            className="mt-1 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 focus:border-emerald-400 focus:outline-none"
+            className="input-field text-text"
           />
         </label>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4 pt-2">
         <button
           type="submit"
           disabled={loading}
-          className="rounded-md border border-emerald-500 px-5 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-[0_0_20px_rgba(112,0,255,0.3)] hover:bg-primaryHover hover:shadow-[0_0_30px_rgba(112,0,255,0.5)] active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
         >
           {loading ? 'Применяем…' : 'Применить конфигурацию'}
         </button>
-        {message && <span className="text-sm text-emerald-300">{message}</span>}
-        {error && <span className="text-sm text-red-300">{error}</span>}
+        {message && <span className="text-sm text-success animate-fade-in">{message}</span>}
+        {error && <span className="text-sm text-error animate-fade-in">{error}</span>}
       </div>
     </form>
   );

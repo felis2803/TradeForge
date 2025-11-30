@@ -79,22 +79,32 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-4 text-sm text-slate-300">
-        <span>
-          Текущий статус:{' '}
-          <span className="font-semibold text-slate-100">{status}</span>
-        </span>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
+        <div className="flex items-center gap-3">
+          <span className="text-textMuted">Текущий статус:</span>
+          <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 border ${status === 'running'
+            ? 'bg-success/10 border-success/20 text-success'
+            : status === 'stopped'
+              ? 'bg-error/10 border-error/20 text-error'
+              : 'bg-warning/10 border-warning/20 text-warning'
+            }`}>
+            <div className={`w-2 h-2 rounded-full ${status === 'running' ? 'bg-success animate-pulse' : status === 'stopped' ? 'bg-error' : 'bg-warning'
+              }`} />
+            <span className="font-semibold uppercase tracking-wider">{status}</span>
+          </div>
+        </div>
         {isFetching && (
-          <span className="text-xs text-slate-500">обновляем…</span>
+          <span className="text-xs text-primary animate-pulse">обновляем…</span>
         )}
       </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={handleStart}
           disabled={pending || isRunning}
-          className="rounded-md border border-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 rounded-xl bg-success/10 border border-success/20 px-4 py-3 text-sm font-semibold text-success hover:bg-success/20 hover:shadow-[0_0_15px_rgba(0,255,148,0.2)] active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
         >
           Старт
         </button>
@@ -102,7 +112,7 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
           type="button"
           onClick={handlePause}
           disabled={pending || !isRunning}
-          className="rounded-md border border-amber-500 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 rounded-xl bg-warning/10 border border-warning/20 px-4 py-3 text-sm font-semibold text-warning hover:bg-warning/20 hover:shadow-[0_0_15px_rgba(255,184,0,0.2)] active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
         >
           Пауза
         </button>
@@ -110,30 +120,44 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
           type="button"
           onClick={handleStop}
           disabled={pending || isIdle || isStopped}
-          className="rounded-md border border-red-500 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 rounded-xl bg-error/10 border border-error/20 px-4 py-3 text-sm font-semibold text-error hover:bg-error/20 hover:shadow-[0_0_15px_rgba(255,0,85,0.2)] active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
         >
           Стоп
         </button>
-        {mode === 'history' && (
-          <label className="ml-auto flex items-center gap-2 text-sm text-slate-300">
-            Скорость:
+      </div>
+
+      {mode === 'history' && (
+        <div className="rounded-xl border border-white/5 bg-surface/30 p-4 animate-fade-in">
+          <label className="flex items-center justify-between gap-4 text-sm">
+            <span className="font-medium text-textMuted">Скорость воспроизведения</span>
             <select
               value={selectedSpeed}
               onChange={(event) => setSelectedSpeed(event.target.value)}
-              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none"
+              className="input-field w-auto min-w-[120px] bg-surface/50 text-text"
             >
               {speeds.map((option) => (
-                <option key={option} value={option}>
+                <option key={option} value={option} className="bg-surface text-text">
                   {option}
                 </option>
               ))}
             </select>
           </label>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        {message && <span className="text-emerald-300">{message}</span>}
-        {error && <span className="text-red-300">{error}</span>}
+        </div>
+      )}
+
+      <div className="min-h-[24px]">
+        {message && <span className="text-sm text-success animate-fade-in flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
+          </svg>
+          {message}
+        </span>}
+        {error && <span className="text-sm text-error animate-fade-in flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+          </svg>
+          {error}
+        </span>}
       </div>
     </div>
   );

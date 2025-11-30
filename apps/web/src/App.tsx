@@ -52,33 +52,57 @@ function App(): JSX.Element {
 
   return (
     <WsContext.Provider value={wsClient}>
-      <div className="min-h-screen bg-slate-950 text-slate-100">
-        <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl flex-col gap-2 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold">TradeForge Sandbox</h1>
-              <p className="text-sm text-slate-400">
-                Модуль настройки и контроля единичного запуска
-              </p>
+      <div className="min-h-screen text-text selection:bg-primary/30">
+        <header className="sticky top-0 z-50 border-b border-white/5 bg-background/60 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 text-primary shadow-[0_0_15px_rgba(112,0,255,0.3)]">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+                  <path fillRule="evenodd" d="M9.315 7.584C12.195 3.883 16.695 1.5 21.75 1.5a.75.75 0 01.75.75c0 5.056-2.383 9.555-6.084 12.436h.001c-3.7 2.881-8.199 5.264-13.254 5.264a.75.75 0 01-.75-.75c0-5.055 2.383-9.555 6.084-12.436z" clipRule="evenodd" />
+                  <path d="M4.75 6a.75.75 0 00-.75.75v10.5c0 .414.336.75.75.75h10.5a.75.75 0 00.75-.75v-10.5a.75.75 0 00-.75-.75h-10.5z" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="bg-gradient-to-r from-white to-white/60 bg-clip-text text-2xl font-bold text-transparent">
+                  TradeForge
+                </h1>
+                <p className="text-xs font-medium text-primary tracking-wider uppercase">
+                  Sandbox Environment
+                </p>
+              </div>
             </div>
-            <div className="text-sm text-slate-300">
-              WS статус:{' '}
-              <span className="font-medium text-slate-100">
-                {wsStatusLabel[status]}
-              </span>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-3 py-1.5 backdrop-blur-sm">
+                <div className={`h-2 w-2 rounded-full ${status === 'open' ? 'bg-success shadow-[0_0_10px_#00FF94]' : 'bg-error'}`} />
+                <span className="text-xs font-medium text-textMuted">
+                  {wsStatusLabel[status]}
+                </span>
+              </div>
             </div>
           </div>
         </header>
-        <main className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-6">
-          <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-6 shadow-lg shadow-slate-900/40">
-            <Preflight apiBase={API_BASE} />
+
+        <main className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-8 animate-fade-in">
+          <section className="glass-panel rounded-2xl p-1 transition-all hover:border-primary/20">
+            <div className="rounded-xl bg-surface/50 p-6">
+              <Preflight apiBase={API_BASE} />
+            </div>
           </section>
-          <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-6 shadow-lg shadow-slate-900/40">
-            <RunControl apiBase={API_BASE} />
-          </section>
-          <section className="rounded-lg border border-slate-800 bg-slate-900/60 p-6 shadow-lg shadow-slate-900/40">
-            <Bots apiBase={API_BASE} />
-          </section>
+
+          <div className="grid gap-8 lg:grid-cols-2">
+            <section className="glass-panel rounded-2xl p-1 transition-all hover:border-primary/20">
+              <div className="h-full rounded-xl bg-surface/50 p-6">
+                <RunControl apiBase={API_BASE} />
+              </div>
+            </section>
+
+            <section className="glass-panel rounded-2xl p-1 transition-all hover:border-primary/20">
+              <div className="h-full rounded-xl bg-surface/50 p-6">
+                <Bots apiBase={API_BASE} />
+              </div>
+            </section>
+          </div>
         </main>
       </div>
     </WsContext.Provider>
