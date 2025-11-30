@@ -394,8 +394,11 @@ function computeUpdateInterval(
   periodStart: string,
   periodEnd: string,
 ) {
-  const speed = playbackSpeedMultiplier[playbackSpeed] ?? 1;
   const base = dataMode === 'realtime' ? 1200 : 1800;
+  const speed =
+    dataMode === 'realtime'
+      ? 1
+      : playbackSpeedMultiplier[playbackSpeed] ?? 1;
 
   if (dataMode === 'history') {
     const periodHours = getPeriodHours(periodStart, periodEnd);
