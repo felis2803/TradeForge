@@ -11,6 +11,12 @@ const exchanges = ['Binance', 'Bybit', 'OKX', 'Bitget'];
 const instruments = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'];
 const playbackSpeeds = ['0.25x', '0.5x', '1x', '2x', '4x'] as const;
 
+declare global {
+  interface Window {
+    TradingView?: any;
+  }
+}
+
 const instrumentSymbols: Record<string, string> = {
   'BTC/USDT': 'BTCUSDT',
   'ETH/USDT': 'ETHUSDT',
@@ -195,6 +201,21 @@ function getProfile(symbol: string) {
 
 function toVenueSymbol(instrument: string) {
   return instrumentSymbols[instrument] ?? instrumentSymbols[instruments[0]];
+}
+
+function toTradingViewExchange(exchange: string) {
+  switch (exchange) {
+    case 'Binance':
+      return 'BINANCE';
+    case 'Bybit':
+      return 'BYBIT';
+    case 'OKX':
+      return 'OKX';
+    case 'Bitget':
+      return 'BITGET';
+    default:
+      return 'BINANCE';
+  }
 }
 
 function formatTime(date: Date) {
@@ -649,6 +670,10 @@ export default function ManualTrading(): JSX.Element {
   const tickerRef = useRef(ticker);
   const previousDataModeRef = useRef(dataMode);
   const [timeline, setTimeline] = useState<DataSnapshot[]>([]);
+  const [isTradingViewReady, setIsTradingViewReady] = useState(false);
+  const tradingViewContainerRef = useRef<HTMLDivElement | null>(null);
+  const tradingViewWidgetRef = useRef<any>(null);
+  const tradingViewContainerId = 'manual-tradingview-widget';
 
   useEffect(() => {
     const saved = localStorage.getItem('manual-trading:connection');
@@ -727,6 +752,67 @@ export default function ManualTrading(): JSX.Element {
   useEffect(() => {
     tickerRef.current = ticker;
   }, [ticker]);
+
+  useEffect(() => {
+    const handleTradingViewReady = () => setIsTradingViewReady(true);
+
+    if (window.TradingView) {
+      handleTradingViewReady();
+      return;
+    }
+
+    const existingScript = document.getElementById('tradingview-widget-script');
+    if (existingScript) {
+      existingScript.addEventListener('load', handleTradingViewReady);
+      return () => {
+        existingScript.removeEventListener('load', handleTradingViewReady);
+      };
+    }
+
+    const script = document.createElement('script');
+    script.id = 'tradingview-widget-script';
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.async = true;
+    script.onload = handleTradingViewReady;
+    document.body.appendChild(script);
+
+    return () => {
+      script.onload = null;
+    };
+  }, []);
+
+  const tradingViewSymbol = useMemo(
+    () => `${toTradingViewExchange(selectedExchange)}:${toVenueSymbol(selectedInstrument)}`,
+    [selectedExchange, selectedInstrument],
+  );
+
+  useEffect(() => {
+    if (!isTradingViewReady || !tradingViewContainerRef.current)
+      return;
+
+    tradingViewWidgetRef.current?.remove?.();
+    tradingViewContainerRef.current.innerHTML = '';
+
+    tradingViewWidgetRef.current = new window.TradingView.widget({
+      autosize: true,
+      symbol: tradingViewSymbol,
+      interval: '15',
+      timezone: 'Etc/UTC',
+      theme: 'dark',
+      style: '1',
+      locale: 'ru',
+      container_id: tradingViewContainerId,
+      hide_side_toolbar: false,
+      enable_publishing: false,
+      hide_legend: false,
+      save_image: false,
+      studies: ['STD;Bollinger_Bands'],
+    });
+  }, [
+    isTradingViewReady,
+    tradingViewContainerId,
+    tradingViewSymbol,
+  ]);
 
   const orderRules = useMemo(
     () => getTradingRules(selectedInstrument),
@@ -1441,7 +1527,6 @@ export default function ManualTrading(): JSX.Element {
     normalizedOrderBook.asks.length > 0 &&
     !dataUnavailable;
   const hasTrades = trades.length > 0 && !dataUnavailable;
-  const hasChart = syntheticChart.length > 0 && !dataUnavailable;
 
   return (
     <div className="space-y-6">
@@ -1886,34 +1971,22 @@ export default function ManualTrading(): JSX.Element {
               <div className="mb-3 flex items-center justify-between text-sm text-slate-400">
                 <span>График</span>
                 <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
-                  Preview
+                  TradingView
                 </span>
               </div>
-              {hasChart ? (
-                <div className="grid h-48 grid-cols-4 items-end gap-2">
-                  {syntheticChart.map((bar) => (
-                    <div key={bar.label} className="flex flex-col items-center">
-                      <div
-                        className="w-full rounded-t bg-gradient-to-t from-emerald-500/30 to-emerald-300/60"
-                        style={{
-                          height: `${Math.max(20, (bar.price % 300) / 4)}px`,
-                        }}
-                      />
-                      <span className="mt-2 text-xs text-slate-400">
-                        {bar.label}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-200">
-                        {bar.price}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex h-48 items-center justify-center rounded border border-slate-800 bg-slate-900/40 text-sm text-slate-400">
-                  График временно недоступен — можно проверить обработку
-                  отсутствующих данных.
-                </div>
-              )}
+              <div className="overflow-hidden rounded border border-slate-800 bg-slate-900">
+                {isTradingViewReady ? (
+                  <div
+                    id={tradingViewContainerId}
+                    ref={tradingViewContainerRef}
+                    className="h-80"
+                  />
+                ) : (
+                  <div className="flex h-80 items-center justify-center text-sm text-slate-400">
+                    Загружаем TradingView виджет...
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
