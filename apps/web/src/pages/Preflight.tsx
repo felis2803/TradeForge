@@ -118,14 +118,18 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
     <form className="space-y-6" onSubmit={handleSubmit}>
       <div className="flex flex-wrap gap-4">
         <div className="flex flex-col">
-          <label className="text-sm font-medium text-textMuted mb-1">Биржа</label>
+          <label className="text-sm font-medium text-textMuted mb-1">
+            Биржа
+          </label>
           <select
             value={exchange}
             onChange={(event) => setExchange(event.target.value)}
             className="input-field bg-surface/50 text-text"
           >
             {exchanges.map((option) => (
-              <option key={option} className="bg-surface text-text">{option}</option>
+              <option key={option} className="bg-surface text-text">
+                {option}
+              </option>
             ))}
           </select>
         </div>
@@ -139,7 +143,9 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
             className="input-field bg-surface/50 text-text"
           >
             {operators.map((option) => (
-              <option key={option} className="bg-surface text-text">{option}</option>
+              <option key={option} className="bg-surface text-text">
+                {option}
+              </option>
             ))}
           </select>
         </div>
@@ -147,8 +153,12 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
           <span className="text-sm font-medium text-textMuted mb-1">Режим</span>
           <div className="flex gap-3 text-sm h-[42px] items-center">
             <label className="inline-flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${mode === 'realtime' ? 'border-primary' : 'border-textMuted group-hover:border-primary/50'}`}>
-                {mode === 'realtime' && <div className="w-2 h-2 rounded-full bg-primary" />}
+              <div
+                className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${mode === 'realtime' ? 'border-primary' : 'border-textMuted group-hover:border-primary/50'}`}
+              >
+                {mode === 'realtime' && (
+                  <div className="w-2 h-2 rounded-full bg-primary" />
+                )}
               </div>
               <input
                 type="radio"
@@ -161,11 +171,17 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                 }}
                 className="hidden"
               />
-              <span className="text-text group-hover:text-white transition-colors">Realtime</span>
+              <span className="text-text group-hover:text-white transition-colors">
+                Realtime
+              </span>
             </label>
             <label className="inline-flex items-center gap-2 cursor-pointer group">
-              <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${mode === 'history' ? 'border-primary' : 'border-textMuted group-hover:border-primary/50'}`}>
-                {mode === 'history' && <div className="w-2 h-2 rounded-full bg-primary" />}
+              <div
+                className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${mode === 'history' ? 'border-primary' : 'border-textMuted group-hover:border-primary/50'}`}
+              >
+                {mode === 'history' && (
+                  <div className="w-2 h-2 rounded-full bg-primary" />
+                )}
               </div>
               <input
                 type="radio"
@@ -178,7 +194,9 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
                 }}
                 className="hidden"
               />
-              <span className="text-text group-hover:text-white transition-colors">History</span>
+              <span className="text-text group-hover:text-white transition-colors">
+                History
+              </span>
             </label>
           </div>
         </div>
@@ -224,7 +242,9 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
           </button>
           <div className="text-sm text-textMuted pb-2">
             Статус данных:{' '}
-            <span className={`font-medium ${dataReady ? 'text-success' : 'text-warning'}`}>
+            <span
+              className={`font-medium ${dataReady ? 'text-success' : 'text-warning'}`}
+            >
               {dataReady ? 'Готово' : 'Ожидание'}
             </span>
           </div>
@@ -247,8 +267,12 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
             <thead className="bg-white/5 text-left">
               <tr>
                 <th className="px-4 py-3 font-medium text-textMuted">Тикер</th>
-                <th className="px-4 py-3 font-medium text-textMuted">Maker (bps)</th>
-                <th className="px-4 py-3 font-medium text-textMuted">Taker (bps)</th>
+                <th className="px-4 py-3 font-medium text-textMuted">
+                  Maker (bps)
+                </th>
+                <th className="px-4 py-3 font-medium text-textMuted">
+                  Taker (bps)
+                </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -355,8 +379,14 @@ export default function Preflight({ apiBase }: PreflightProps): JSX.Element {
         >
           {loading ? 'Применяем…' : 'Применить конфигурацию'}
         </button>
-        {message && <span className="text-sm text-success animate-fade-in">{message}</span>}
-        {error && <span className="text-sm text-error animate-fade-in">{error}</span>}
+        {message && (
+          <span className="text-sm text-success animate-fade-in">
+            {message}
+          </span>
+        )}
+        {error && (
+          <span className="text-sm text-error animate-fade-in">{error}</span>
+        )}
       </div>
     </form>
   );

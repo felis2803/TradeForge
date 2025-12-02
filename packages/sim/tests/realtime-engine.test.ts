@@ -89,13 +89,13 @@ describe('createRealtimeEngine adapter', () => {
     expect(stored.status).toBe('FILLED');
     expect(stored.executedQty).toBe(2n as QtyInt);
     expect(fills).toHaveLength(1);
-    expect(fills[0].fill.qty).toBe(2n as QtyInt);
-    expect(fills[0].order.status).toBe('FILLED');
+    expect(fills[0]!.fill.qty).toBe(2n as QtyInt);
+    expect(fills[0]!.order.status).toBe('FILLED');
 
     const balances = accounts.getBalancesSnapshot(account.id);
-    expect(balances.BTC?.free).toBe(2n);
-    expect(balances.USDT?.free).toBe(800n);
-    expect(balances.USDT?.locked ?? 0n).toBe(0n);
+    expect(balances['BTC']!.free).toBe(2n);
+    expect(balances['USDT']!.free).toBe(800n);
+    expect(balances['USDT']!.locked ?? 0n).toBe(0n);
 
     unsubscribe();
     await adapter.close();
@@ -125,8 +125,8 @@ describe('createRealtimeEngine adapter', () => {
     expect(stored.executedQty).toBe(3n as QtyInt);
 
     const balances = accounts.getBalancesSnapshot(account.id);
-    expect(balances.BTC?.free).toBe(2n);
-    expect(balances.USDT?.free).toBe(300n);
+    expect(balances['BTC']!.free).toBe(2n);
+    expect(balances['USDT']!.free).toBe(300n);
 
     await adapter.close();
   });

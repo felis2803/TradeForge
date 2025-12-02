@@ -83,15 +83,27 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
       <div className="flex flex-wrap items-center justify-between gap-4 text-sm">
         <div className="flex items-center gap-3">
           <span className="text-textMuted">Текущий статус:</span>
-          <div className={`flex items-center gap-2 rounded-lg px-3 py-1.5 border ${status === 'running'
-            ? 'bg-success/10 border-success/20 text-success'
-            : status === 'stopped'
-              ? 'bg-error/10 border-error/20 text-error'
-              : 'bg-warning/10 border-warning/20 text-warning'
-            }`}>
-            <div className={`w-2 h-2 rounded-full ${status === 'running' ? 'bg-success animate-pulse' : status === 'stopped' ? 'bg-error' : 'bg-warning'
-              }`} />
-            <span className="font-semibold uppercase tracking-wider">{status}</span>
+          <div
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 border ${
+              status === 'running'
+                ? 'bg-success/10 border-success/20 text-success'
+                : status === 'stopped'
+                  ? 'bg-error/10 border-error/20 text-error'
+                  : 'bg-warning/10 border-warning/20 text-warning'
+            }`}
+          >
+            <div
+              className={`w-2 h-2 rounded-full ${
+                status === 'running'
+                  ? 'bg-success animate-pulse'
+                  : status === 'stopped'
+                    ? 'bg-error'
+                    : 'bg-warning'
+              }`}
+            />
+            <span className="font-semibold uppercase tracking-wider">
+              {status}
+            </span>
           </div>
         </div>
         {isFetching && (
@@ -129,14 +141,20 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
       {mode === 'history' && (
         <div className="rounded-xl border border-white/5 bg-surface/30 p-4 animate-fade-in">
           <label className="flex items-center justify-between gap-4 text-sm">
-            <span className="font-medium text-textMuted">Скорость воспроизведения</span>
+            <span className="font-medium text-textMuted">
+              Скорость воспроизведения
+            </span>
             <select
               value={selectedSpeed}
               onChange={(event) => setSelectedSpeed(event.target.value)}
               className="input-field w-auto min-w-[120px] bg-surface/50 text-text"
             >
               {speeds.map((option) => (
-                <option key={option} value={option} className="bg-surface text-text">
+                <option
+                  key={option}
+                  value={option}
+                  className="bg-surface text-text"
+                >
                   {option}
                 </option>
               ))}
@@ -146,18 +164,40 @@ export default function RunControl({ apiBase }: RunControlProps): JSX.Element {
       )}
 
       <div className="min-h-[24px]">
-        {message && <span className="text-sm text-success animate-fade-in flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
-          </svg>
-          {message}
-        </span>}
-        {error && <span className="text-sm text-error animate-fade-in flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-          </svg>
-          {error}
-        </span>}
+        {message && (
+          <span className="text-sm text-success animate-fade-in flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="w-4 h-4"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z"
+                clipRule="evenodd"
+              />
+            </svg>
+            {message}
+          </span>
+        )}
+        {error && (
+          <span className="text-sm text-error animate-fade-in flex items-center gap-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="w-4 h-4"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                clipRule="evenodd"
+              />
+            </svg>
+            {error}
+          </span>
+        )}
       </div>
     </div>
   );

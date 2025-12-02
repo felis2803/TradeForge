@@ -57,8 +57,17 @@ function App(): JSX.Element {
           <div className="mx-auto flex max-w-7xl flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20 text-primary shadow-[0_0_15px_rgba(112,0,255,0.3)]">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-                  <path fillRule="evenodd" d="M9.315 7.584C12.195 3.883 16.695 1.5 21.75 1.5a.75.75 0 01.75.75c0 5.056-2.383 9.555-6.084 12.436h.001c-3.7 2.881-8.199 5.264-13.254 5.264a.75.75 0 01-.75-.75c0-5.055 2.383-9.555 6.084-12.436z" clipRule="evenodd" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="h-6 w-6"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M9.315 7.584C12.195 3.883 16.695 1.5 21.75 1.5a.75.75 0 01.75.75c0 5.056-2.383 9.555-6.084 12.436h.001c-3.7 2.881-8.199 5.264-13.254 5.264a.75.75 0 01-.75-.75c0-5.055 2.383-9.555 6.084-12.436z"
+                    clipRule="evenodd"
+                  />
                   <path d="M4.75 6a.75.75 0 00-.75.75v10.5c0 .414.336.75.75.75h10.5a.75.75 0 00.75-.75v-10.5a.75.75 0 00-.75-.75h-10.5z" />
                 </svg>
               </div>
@@ -74,7 +83,9 @@ function App(): JSX.Element {
 
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-3 py-1.5 backdrop-blur-sm">
-                <div className={`h-2 w-2 rounded-full ${status === 'open' ? 'bg-success shadow-[0_0_10px_#00FF94]' : 'bg-error'}`} />
+                <div
+                  className={`h-2 w-2 rounded-full ${status === 'open' ? 'bg-success shadow-[0_0_10px_#00FF94]' : 'bg-error'}`}
+                />
                 <span className="text-xs font-medium text-textMuted">
                   {wsStatusLabel[status]}
                 </span>

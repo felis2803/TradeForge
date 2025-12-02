@@ -13,7 +13,7 @@ const playbackSpeeds = ['0.25x', '0.5x', '1x', '2x', '4x'] as const;
 
 declare global {
   interface Window {
-    TradingView?: any;
+    TradingView?: unknown;
   }
 }
 
@@ -573,9 +573,7 @@ function computeUpdateInterval(
 ) {
   const base = dataMode === 'realtime' ? 1200 : 1800;
   const speed =
-    dataMode === 'realtime'
-      ? 1
-      : playbackSpeedMultiplier[playbackSpeed] ?? 1;
+    dataMode === 'realtime' ? 1 : (playbackSpeedMultiplier[playbackSpeed] ?? 1);
 
   if (dataMode === 'history') {
     const periodHours = getPeriodHours(periodStart, periodEnd);
@@ -672,7 +670,7 @@ export default function ManualTrading(): JSX.Element {
   const [timeline, setTimeline] = useState<DataSnapshot[]>([]);
   const [isTradingViewReady, setIsTradingViewReady] = useState(false);
   const tradingViewContainerRef = useRef<HTMLDivElement | null>(null);
-  const tradingViewWidgetRef = useRef<any>(null);
+  const tradingViewWidgetRef = useRef<unknown>(null);
   const tradingViewContainerId = 'manual-tradingview-widget';
 
   useEffect(() => {
@@ -782,13 +780,13 @@ export default function ManualTrading(): JSX.Element {
   }, []);
 
   const tradingViewSymbol = useMemo(
-    () => `${toTradingViewExchange(selectedExchange)}:${toVenueSymbol(selectedInstrument)}`,
+    () =>
+      `${toTradingViewExchange(selectedExchange)}:${toVenueSymbol(selectedInstrument)}`,
     [selectedExchange, selectedInstrument],
   );
 
   useEffect(() => {
-    if (!isTradingViewReady || !tradingViewContainerRef.current)
-      return;
+    if (!isTradingViewReady || !tradingViewContainerRef.current) return;
 
     tradingViewWidgetRef.current?.remove?.();
     tradingViewContainerRef.current.innerHTML = '';
@@ -808,11 +806,7 @@ export default function ManualTrading(): JSX.Element {
       save_image: false,
       studies: ['STD;Bollinger_Bands'],
     });
-  }, [
-    isTradingViewReady,
-    tradingViewContainerId,
-    tradingViewSymbol,
-  ]);
+  }, [isTradingViewReady, tradingViewContainerId, tradingViewSymbol]);
 
   const orderRules = useMemo(
     () => getTradingRules(selectedInstrument),
@@ -2064,8 +2058,8 @@ export default function ManualTrading(): JSX.Element {
                 id="order-size-help"
                 className={`text-xs ${fieldErrors.size ? 'text-red-200' : 'text-slate-400'}`}
               >
-                {fieldErrors.size?.join(' ')
-                  ?? `Мин. ${orderRules.minSize}, макс. ${orderRules.maxSize}, точность: ${orderRules.sizePrecision} знаков.`}
+                {fieldErrors.size?.join(' ') ??
+                  `Мин. ${orderRules.minSize}, макс. ${orderRules.maxSize}, точность: ${orderRules.sizePrecision} знаков.`}
               </p>
             </label>
             {orderType !== 'market' && (
@@ -2094,8 +2088,8 @@ export default function ManualTrading(): JSX.Element {
                   id="order-price-help"
                   className={`text-xs ${fieldErrors.price ? 'text-red-200' : 'text-slate-400'}`}
                 >
-                  {fieldErrors.price?.join(' ')
-                    ?? `Точность: ${orderRules.pricePrecision} знаков. Для стоп- и лимит-ордеров укажите цену выше 0.`}
+                  {fieldErrors.price?.join(' ') ??
+                    `Точность: ${orderRules.pricePrecision} знаков. Для стоп- и лимит-ордеров укажите цену выше 0.`}
                 </p>
               </label>
             )}
@@ -2103,7 +2097,8 @@ export default function ManualTrading(): JSX.Element {
               <div className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-900/50 px-3 py-2 text-xs text-slate-300">
                 <span>
                   Нотионал:{' '}
-                  <strong>{notionalPreview.toLocaleString('ru-RU')}</strong> USDT
+                  <strong>{notionalPreview.toLocaleString('ru-RU')}</strong>{' '}
+                  USDT
                 </span>
                 <span>
                   Доступно: <strong>{balance.toLocaleString('ru-RU')}</strong>{' '}

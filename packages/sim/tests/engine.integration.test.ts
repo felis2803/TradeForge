@@ -49,7 +49,7 @@ describe('Engine integration', () => {
     const engine = createEngine({
       streams: { trades: tradeStream, depth: depthStream },
       book,
-      liquidity: config,
+      ...(config && { liquidity: config }),
     });
     return { engine, depthStream, tradeStream, book };
   }

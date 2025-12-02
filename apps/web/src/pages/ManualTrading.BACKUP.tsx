@@ -5,13 +5,13 @@ const instruments = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'];
 const playbackSpeeds = ['0.25x', '0.5x', '1x', '2x', '4x'] as const;
 
 const playbackSpeedMultiplier: Record<(typeof playbackSpeeds)[number], number> =
-{
-  '0.25x': 0.25,
-  '0.5x': 0.5,
-  '1x': 1,
-  '2x': 2,
-  '4x': 4,
-};
+  {
+    '0.25x': 0.25,
+    '0.5x': 0.5,
+    '1x': 1,
+    '2x': 2,
+    '4x': 4,
+  };
 
 const instrumentProfiles: Record<
   string,
@@ -300,8 +300,8 @@ function mutateChart(
   const fallback = previous.length ? previous : seedChart(symbol);
   const nextPrice = Math.round(
     priceHint ??
-    fallback[fallback.length - 1]?.price ??
-    getProfile(symbol).basePrice,
+      fallback[fallback.length - 1]?.price ??
+      getProfile(symbol).basePrice,
   );
   const nextPoint: ChartPoint = {
     price: nextPrice,
@@ -400,13 +400,7 @@ export default function ManualTrading(): JSX.Element {
   const [lastUpdateAt, setLastUpdateAt] = useState<Date | null>(null);
   const latestPriceRef = useRef<number>(ticker.last);
 
-  // Quick Actions state
-  const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
-  const [showHotkeys, setShowHotkeys] = useState(true);
-  const [recentInstruments, setRecentInstruments] = useState<string[]>(() => {
-    const saved = localStorage.getItem('manual-trading:recent-instruments');
-    return saved ? JSON.parse(saved) : [instruments[0]];
-  });
+  // Quick Actions state removed - these variables are unused in backup file
 
   const resetStreams = (instrument = selectedInstrument) => {
     const nextTicker = createTickerSnapshot(instrument);
@@ -663,7 +657,7 @@ export default function ManualTrading(): JSX.Element {
           orderType === 'market'
             ? existing.avgPrice
             : (existing.avgPrice * existing.size + orderPrice * orderSize) /
-            nextSize;
+              nextSize;
         updatedPosition = {
           ...existing,
           size: nextSize,
@@ -816,10 +810,11 @@ export default function ManualTrading(): JSX.Element {
                   key={mode}
                   type="button"
                   onClick={() => setDataMode(mode)}
-                  className={`flex-1 rounded px-3 py-2 font-medium capitalize transition ${dataMode === mode
+                  className={`flex-1 rounded px-3 py-2 font-medium capitalize transition ${
+                    dataMode === mode
                       ? 'bg-emerald-500/20 text-emerald-200'
                       : 'text-slate-300 hover:text-slate-100'
-                    }`}
+                  }`}
                 >
                   {mode === 'history' ? 'Исторические' : 'Realtime'}
                 </button>
@@ -865,10 +860,11 @@ export default function ManualTrading(): JSX.Element {
             <button
               type="button"
               onClick={handleTogglePause}
-              className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${isPaused
+              className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                isPaused
                   ? 'border-emerald-500/70 text-emerald-200 hover:border-emerald-400'
                   : 'border-slate-700 text-slate-200 hover:border-emerald-400 hover:text-emerald-200'
-                }`}
+              }`}
             >
               {isPaused ? 'Возобновить' : 'Пауза'}
             </button>
@@ -1036,10 +1032,11 @@ export default function ManualTrading(): JSX.Element {
                 key={symbol}
                 type="button"
                 onClick={() => setSelectedInstrument(symbol)}
-                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${selectedInstrument === symbol
+                className={`rounded-md px-3 py-2 text-sm font-semibold transition ${
+                  selectedInstrument === symbol
                     ? 'border border-emerald-500/60 bg-emerald-500/10 text-emerald-200'
                     : 'border border-slate-800 text-slate-300 hover:border-slate-700 hover:text-slate-100'
-                  }`}
+                }`}
               >
                 {symbol}
               </button>
@@ -1063,10 +1060,11 @@ export default function ManualTrading(): JSX.Element {
                     >
                       <span className="text-slate-400">{trade.time}</span>
                       <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${trade.side === 'buy'
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          trade.side === 'buy'
                             ? 'bg-emerald-500/15 text-emerald-200'
                             : 'bg-red-500/15 text-red-200'
-                          }`}
+                        }`}
                       >
                         {trade.side === 'buy' ? 'BUY' : 'SELL'}
                       </span>
@@ -1323,10 +1321,10 @@ export default function ManualTrading(): JSX.Element {
                           <span className="font-semibold text-emerald-200">
                             {balance > 0
                               ? (
-                                (Math.abs(position.size * position.avgPrice) /
-                                  balance) *
-                                100
-                              ).toFixed(2)
+                                  (Math.abs(position.size * position.avgPrice) /
+                                    balance) *
+                                  100
+                                ).toFixed(2)
                               : '0.00'}
                             %
                           </span>

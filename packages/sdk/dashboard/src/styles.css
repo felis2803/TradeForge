@@ -421,7 +421,9 @@ tbody tr:hover {
   border: none;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
 .segmented-control button.active {
@@ -459,7 +461,9 @@ tbody tr:hover {
   border-radius: 0.5rem;
   color: var(--text-primary);
   cursor: pointer;
-  transition: border-color 0.2s ease, color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 
 .ghost-button:hover {

@@ -12,7 +12,8 @@ export default {
     '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@tradeforge/core$': '<rootDir>/packages/core/src/index.ts',
     '^@tradeforge/io-binance$': '<rootDir>/packages/io-binance/src/index.ts',
-    '^@tradeforge/feed-binance$': '<rootDir>/packages/feed-binance/src/index.ts',
+    '^@tradeforge/feed-binance$':
+      '<rootDir>/packages/feed-binance/src/index.ts',
     '^@tradeforge/loader-binance$':
       '<rootDir>/packages/loader-binance/src/index.ts',
     '^@tradeforge/sim$': '<rootDir>/packages/sim/src/index.ts',

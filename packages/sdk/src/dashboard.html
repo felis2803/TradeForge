@@ -1,840 +1,876 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TradeForge Multi-Bot Dashboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        :root {
-            --bg-primary: #0a0e27;
-            --bg-secondary: #151932;
-            --bg-card: rgba(30, 35, 62, 0.6);
-            --border-color: rgba(138, 180, 248, 0.1);
-            --text-primary: #e4e9f7;
-            --text-secondary: #8a9dc9;
-            --accent-blue: #4c9aff;
-            --accent-purple: #7c3aed;
-            --accent-green: #10b981;
-            --accent-red: #ef4444;
-            --accent-yellow: #f59e0b;
-            --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1f3a 100%);
-            color: var(--text-primary);
-            min-height: 100vh;
-            padding: 2rem;
-        }
-
-        .container {
-            max-width: 1600px;
-            margin: 0 auto;
-        }
-
-        header {
-            text-align: center;
-            margin-bottom: 2rem;
-            animation: fadeInDown 0.6s ease;
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 0.5rem;
-        }
-
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.5rem 1rem;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 2rem;
-            backdrop-filter: blur(10px);
-            font-size: 0.875rem;
-            margin-top: 1rem;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent-red);
-            animation: pulse 2s infinite;
-        }
-
-        .status-dot.connected {
-            background: var(--accent-green);
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
-        }
-
-        /* Bot Tabs */
-        .bot-tabs {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 2rem;
-            flex-wrap: wrap;
-            border-bottom: 2px solid var(--border-color);
-            padding-bottom: 0.5rem;
-        }
-
-        .bot-tab {
-            padding: 0.75rem 1.5rem;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 0.5rem 0.5rem 0 0;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .bot-tab:hover {
-            background: rgba(76, 154, 255, 0.1);
-            border-color: var(--accent-blue);
-        }
-
-        .bot-tab.active {
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            border-color: transparent;
-            transform: translateY(-2px);
-        }
-
-        .bot-status-indicator {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--accent-green);
-        }
-
-        .bot-count {
-            background: var(--accent-purple);
-            padding: 0.25rem 0.5rem;
-            border-radius: 1rem;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        /* Bot Overview Grid */
-        .bot-overview {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .bot-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 0.75rem;
-            padding: 1rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .bot-card:hover {
-            transform: translateY(-2px);
-            border-color: var(--accent-blue);
-            box-shadow: 0 8px 16px rgba(76, 154, 255, 0.2);
-        }
-
-        .bot-card.active {
-            border-color: var(--accent-purple);
-            background: rgba(124, 58, 237, 0.1);
-        }
-
-        .bot-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.75rem;
-        }
-
-        .bot-name {
-            font-weight: 600;
-            font-size: 1rem;
-        }
-
-        .bot-symbol {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-        }
-
-        .bot-strategy {
-            font-size: 0.75rem;
-            color: var(--accent-blue);
-            margin-bottom: 0.5rem;
-        }
-
-        .bot-stats {
-            display: flex;
-            gap: 1rem;
-            font-size: 0.75rem;
-        }
-
-        .bot-stat {
-            flex: 1;
-        }
-
-        .bot-stat-label {
-            color: var(--text-secondary);
-            margin-bottom: 0.25rem;
-        }
-
-        .bot-stat-value {
-            font-weight: 600;
-        }
-
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 1rem;
-            padding: 1.5rem;
-            backdrop-filter: blur(10px);
-            box-shadow: var(--shadow);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            animation: fadeIn 0.6s ease;
-        }
-
-        .card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
-        }
-
-        .card-title {
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
-            margin-bottom: 1rem;
-        }
-
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-        }
-
-        .stat-label {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-
-        .positive {
-            color: var(--accent-green);
-        }
-
-        .negative {
-            color: var(--accent-red);
-        }
-
-        .neutral {
-            color: var(--text-primary);
-        }
-
-        .wide-card {
-            grid-column: 1 / -1;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        thead {
-            border-bottom: 1px solid var(--border-color);
-        }
-
-        th {
-            text-align: left;
-            padding: 0.75rem;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
-        }
-
-        td {
-            padding: 0.75rem;
-            font-size: 0.875rem;
-            border-bottom: 1px solid rgba(138, 180, 248, 0.05);
-        }
-
-        tbody tr {
-            transition: background-color 0.2s ease;
-        }
-
-        tbody tr:hover {
-            background-color: rgba(76, 154, 255, 0.05);
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 0.5rem;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .badge-buy {
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--accent-green);
-        }
-
-        .badge-sell {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--accent-red);
-        }
-
-        .badge-limit {
-            background: rgba(76, 154, 255, 0.2);
-            color: var(--accent-blue);
-        }
-
-        .badge-market {
-            background: rgba(124, 58, 237, 0.2);
-            color: var(--accent-purple);
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem 1rem;
-            color: var(--text-secondary);
-        }
-
-        .feed-item {
-            padding: 1rem;
-            border-bottom: 1px solid rgba(138, 180, 248, 0.05);
-            transition: background-color 0.2s ease;
-            animation: slideIn 0.3s ease;
-        }
-
-        .feed-item:hover {
-            background-color: rgba(76, 154, 255, 0.05);
-        }
-
-        .feed-item:last-child {
-            border-bottom: none;
-        }
-
-        .feed-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-        }
-
-        .feed-time {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-        }
-
-        .feed-content {
-            font-size: 0.875rem;
-        }
-
-        .scroll-container {
-            max-height: 400px;
-            overflow-y: auto;
-            scrollbar-width: thin;
-            scrollbar-color: var(--accent-blue) var(--bg-secondary);
-        }
-
-        .scroll-container::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .scroll-container::-webkit-scrollbar-track {
-            background: var(--bg-secondary);
-            border-radius: 3px;
-        }
-
-        .scroll-container::-webkit-scrollbar-thumb {
-            background: var(--accent-blue);
-            border-radius: 3px;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes fadeInDown {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateX(-10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-
-        .symbol-tag {
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            border-radius: 0.5rem;
-            font-weight: 600;
-            font-size: 0.875rem;
-        }
-
-        .view-toggle {
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
-
-        .toggle-btn {
-            padding: 0.5rem 1.5rem;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 0.5rem;
-            color: var(--text-primary);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.875rem;
-            margin: 0 0.25rem;
-        }
-
-        .toggle-btn.active {
-            background: var(--accent-blue);
-            border-color: var(--accent-blue);
-        }
-
-        .toggle-btn:hover:not(.active) {
-            background: rgba(76, 154, 255, 0.1);
-        }
-
-        #botDetailView,
-        #botOverviewView {
-            display: none;
-        }
-
-        #botDetailView.active,
-        #botOverviewView.active {
-            display: block;
-        }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg-primary: #0a0e27;
+        --bg-secondary: #151932;
+        --bg-card: rgba(30, 35, 62, 0.6);
+        --border-color: rgba(138, 180, 248, 0.1);
+        --text-primary: #e4e9f7;
+        --text-secondary: #8a9dc9;
+        --accent-blue: #4c9aff;
+        --accent-purple: #7c3aed;
+        --accent-green: #10b981;
+        --accent-red: #ef4444;
+        --accent-yellow: #f59e0b;
+        --shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      }
+
+      body {
+        font-family:
+          'Inter',
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        background: linear-gradient(135deg, var(--bg-primary) 0%, #1a1f3a 100%);
+        color: var(--text-primary);
+        min-height: 100vh;
+        padding: 2rem;
+      }
+
+      .container {
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+
+      header {
+        text-align: center;
+        margin-bottom: 2rem;
+        animation: fadeInDown 0.6s ease;
+      }
+
+      h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        background: linear-gradient(
+          135deg,
+          var(--accent-blue),
+          var(--accent-purple)
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 0.5rem;
+      }
+
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 2rem;
+        backdrop-filter: blur(10px);
+        font-size: 0.875rem;
+        margin-top: 1rem;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent-red);
+        animation: pulse 2s infinite;
+      }
+
+      .status-dot.connected {
+        background: var(--accent-green);
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+
+        50% {
+          opacity: 0.5;
+        }
+      }
+
+      /* Bot Tabs */
+      .bot-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+        border-bottom: 2px solid var(--border-color);
+        padding-bottom: 0.5rem;
+      }
+
+      .bot-tab {
+        padding: 0.75rem 1.5rem;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem 0.5rem 0 0;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .bot-tab:hover {
+        background: rgba(76, 154, 255, 0.1);
+        border-color: var(--accent-blue);
+      }
+
+      .bot-tab.active {
+        background: linear-gradient(
+          135deg,
+          var(--accent-blue),
+          var(--accent-purple)
+        );
+        border-color: transparent;
+        transform: translateY(-2px);
+      }
+
+      .bot-status-indicator {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--accent-green);
+      }
+
+      .bot-count {
+        background: var(--accent-purple);
+        padding: 0.25rem 0.5rem;
+        border-radius: 1rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+
+      /* Bot Overview Grid */
+      .bot-overview {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+      }
+
+      .bot-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 0.75rem;
+        padding: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
+      }
+
+      .bot-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent-blue);
+        box-shadow: 0 8px 16px rgba(76, 154, 255, 0.2);
+      }
+
+      .bot-card.active {
+        border-color: var(--accent-purple);
+        background: rgba(124, 58, 237, 0.1);
+      }
+
+      .bot-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+      }
+
+      .bot-name {
+        font-weight: 600;
+        font-size: 1rem;
+      }
+
+      .bot-symbol {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
+
+      .bot-strategy {
+        font-size: 0.75rem;
+        color: var(--accent-blue);
+        margin-bottom: 0.5rem;
+      }
+
+      .bot-stats {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.75rem;
+      }
+
+      .bot-stat {
+        flex: 1;
+      }
+
+      .bot-stat-label {
+        color: var(--text-secondary);
+        margin-bottom: 0.25rem;
+      }
+
+      .bot-stat-value {
+        font-weight: 600;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+      }
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        padding: 1.5rem;
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow);
+        transition:
+          transform 0.3s ease,
+          box-shadow 0.3s ease;
+        animation: fadeIn 0.6s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+      }
+
+      .card-title {
+        font-size: 0.875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+        margin-bottom: 1rem;
+      }
+
+      .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+      }
+
+      .stat-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+      }
+
+      .positive {
+        color: var(--accent-green);
+      }
+
+      .negative {
+        color: var(--accent-red);
+      }
+
+      .neutral {
+        color: var(--text-primary);
+      }
+
+      .wide-card {
+        grid-column: 1 / -1;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      thead {
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      th {
+        text-align: left;
+        padding: 0.75rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-secondary);
+      }
+
+      td {
+        padding: 0.75rem;
+        font-size: 0.875rem;
+        border-bottom: 1px solid rgba(138, 180, 248, 0.05);
+      }
+
+      tbody tr {
+        transition: background-color 0.2s ease;
+      }
+
+      tbody tr:hover {
+        background-color: rgba(76, 154, 255, 0.05);
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .badge-buy {
+        background: rgba(16, 185, 129, 0.2);
+        color: var(--accent-green);
+      }
+
+      .badge-sell {
+        background: rgba(239, 68, 68, 0.2);
+        color: var(--accent-red);
+      }
+
+      .badge-limit {
+        background: rgba(76, 154, 255, 0.2);
+        color: var(--accent-blue);
+      }
+
+      .badge-market {
+        background: rgba(124, 58, 237, 0.2);
+        color: var(--accent-purple);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: var(--text-secondary);
+      }
+
+      .feed-item {
+        padding: 1rem;
+        border-bottom: 1px solid rgba(138, 180, 248, 0.05);
+        transition: background-color 0.2s ease;
+        animation: slideIn 0.3s ease;
+      }
+
+      .feed-item:hover {
+        background-color: rgba(76, 154, 255, 0.05);
+      }
+
+      .feed-item:last-child {
+        border-bottom: none;
+      }
+
+      .feed-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+      }
+
+      .feed-time {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
+
+      .feed-content {
+        font-size: 0.875rem;
+      }
+
+      .scroll-container {
+        max-height: 400px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: var(--accent-blue) var(--bg-secondary);
+      }
+
+      .scroll-container::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .scroll-container::-webkit-scrollbar-track {
+        background: var(--bg-secondary);
+        border-radius: 3px;
+      }
+
+      .scroll-container::-webkit-scrollbar-thumb {
+        background: var(--accent-blue);
+        border-radius: 3px;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes fadeInDown {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-10px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      .symbol-tag {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        background: linear-gradient(
+          135deg,
+          var(--accent-blue),
+          var(--accent-purple)
+        );
+        border-radius: 0.5rem;
+        font-weight: 600;
+        font-size: 0.875rem;
+      }
+
+      .view-toggle {
+        text-align: center;
+        margin-bottom: 1.5rem;
+      }
+
+      .toggle-btn {
+        padding: 0.5rem 1.5rem;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 0.5rem;
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 0.875rem;
+        margin: 0 0.25rem;
+      }
+
+      .toggle-btn.active {
+        background: var(--accent-blue);
+        border-color: var(--accent-blue);
+      }
+
+      .toggle-btn:hover:not(.active) {
+        background: rgba(76, 154, 255, 0.1);
+      }
+
+      #botDetailView,
+      #botOverviewView {
+        display: none;
+      }
+
+      #botDetailView.active,
+      #botOverviewView.active {
+        display: block;
+      }
     </style>
-</head>
+  </head>
 
-<body>
+  <body>
     <div class="container">
-        <header>
-            <h1>🚀 TradeForge Multi-Bot Dashboard</h1>
-            <div class="status-badge">
-                <span class="status-dot" id="statusDot"></span>
-                <span id="connectionStatus">Connecting...</span>
-                <span class="bot-count" id="botCount">0 Bots</span>
-            </div>
-        </header>
+      <header>
+        <h1>🚀 TradeForge Multi-Bot Dashboard</h1>
+        <div class="status-badge">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="connectionStatus">Connecting...</span>
+          <span class="bot-count" id="botCount">0 Bots</span>
+        </div>
+      </header>
 
-        <!-- View Toggle -->
-        <div class="view-toggle">
-            <button class="toggle-btn active" onclick="switchView('overview')">📊 Overview</button>
-            <button class="toggle-btn" onclick="switchView('detail')">🔍 Bot Detail</button>
+      <!-- View Toggle -->
+      <div class="view-toggle">
+        <button class="toggle-btn active" onclick="switchView('overview')">
+          📊 Overview
+        </button>
+        <button class="toggle-btn" onclick="switchView('detail')">
+          🔍 Bot Detail
+        </button>
+      </div>
+
+      <!-- Bot Overview View -->
+      <div id="botOverviewView" class="active">
+        <div class="bot-overview" id="botOverview">
+          <div class="empty-state">No bots connected yet...</div>
+        </div>
+      </div>
+
+      <!-- Bot Detail View -->
+      <div id="botDetailView">
+        <!-- Bot Tabs -->
+        <div class="bot-tabs" id="botTabs">
+          <div class="empty-state">No bots available</div>
         </div>
 
-        <!-- Bot Overview View -->
-        <div id="botOverviewView" class="active">
-            <div class="bot-overview" id="botOverview">
-                <div class="empty-state">No bots connected yet...</div>
+        <div class="grid">
+          <!-- Bot Info -->
+          <div class="card">
+            <div class="card-title">Bot Information</div>
+            <div class="stat-value">
+              <span class="symbol-tag" id="symbolDisplay">-</span>
             </div>
+            <div class="stat-label" id="strategyDisplay">No strategy</div>
+          </div>
+
+          <!-- Balance -->
+          <div class="card">
+            <div class="card-title">Quote Balance</div>
+            <div class="stat-value neutral" id="balanceDisplay">0.00</div>
+            <div class="stat-label">USDT</div>
+          </div>
+
+          <!-- Position -->
+          <div class="card">
+            <div class="card-title">Position</div>
+            <div class="stat-value neutral" id="positionDisplay">0.00000</div>
+            <div class="stat-label">BTC</div>
+          </div>
+
+          <!-- Unrealized P/L -->
+          <div class="card">
+            <div class="card-title">Unrealized P/L</div>
+            <div class="stat-value neutral" id="pnlDisplay">0.00</div>
+            <div class="stat-label">USDT</div>
+          </div>
+
+          <!-- Active Orders -->
+          <div class="card wide-card">
+            <div class="card-title">Active Orders</div>
+            <div class="scroll-container">
+              <table id="ordersTable">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Type</th>
+                    <th>Side</th>
+                    <th>Price</th>
+                    <th>Quantity</th>
+                    <th>Filled</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="ordersBody">
+                  <tr>
+                    <td colspan="7" class="empty-state">No active orders</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Recent Trades -->
+          <div class="card wide-card">
+            <div class="card-title">Recent Market Trades</div>
+            <div class="scroll-container" id="tradesFeed">
+              <div class="empty-state">Waiting for trades...</div>
+            </div>
+          </div>
+
+          <!-- Order Fills -->
+          <div class="card wide-card">
+            <div class="card-title">Order Fills</div>
+            <div class="scroll-container" id="fillsFeed">
+              <div class="empty-state">No fills yet</div>
+            </div>
+          </div>
         </div>
-
-        <!-- Bot Detail View -->
-        <div id="botDetailView">
-            <!-- Bot Tabs -->
-            <div class="bot-tabs" id="botTabs">
-                <div class="empty-state">No bots available</div>
-            </div>
-
-            <div class="grid">
-                <!-- Bot Info -->
-                <div class="card">
-                    <div class="card-title">Bot Information</div>
-                    <div class="stat-value"><span class="symbol-tag" id="symbolDisplay">-</span></div>
-                    <div class="stat-label" id="strategyDisplay">No strategy</div>
-                </div>
-
-                <!-- Balance -->
-                <div class="card">
-                    <div class="card-title">Quote Balance</div>
-                    <div class="stat-value neutral" id="balanceDisplay">0.00</div>
-                    <div class="stat-label">USDT</div>
-                </div>
-
-                <!-- Position -->
-                <div class="card">
-                    <div class="card-title">Position</div>
-                    <div class="stat-value neutral" id="positionDisplay">0.00000</div>
-                    <div class="stat-label">BTC</div>
-                </div>
-
-                <!-- Unrealized P/L -->
-                <div class="card">
-                    <div class="card-title">Unrealized P/L</div>
-                    <div class="stat-value neutral" id="pnlDisplay">0.00</div>
-                    <div class="stat-label">USDT</div>
-                </div>
-
-                <!-- Active Orders -->
-                <div class="card wide-card">
-                    <div class="card-title">Active Orders</div>
-                    <div class="scroll-container">
-                        <table id="ordersTable">
-                            <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Type</th>
-                                    <th>Side</th>
-                                    <th>Price</th>
-                                    <th>Quantity</th>
-                                    <th>Filled</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ordersBody">
-                                <tr>
-                                    <td colspan="7" class="empty-state">No active orders</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Recent Trades -->
-                <div class="card wide-card">
-                    <div class="card-title">Recent Market Trades</div>
-                    <div class="scroll-container" id="tradesFeed">
-                        <div class="empty-state">Waiting for trades...</div>
-                    </div>
-                </div>
-
-                <!-- Order Fills -->
-                <div class="card wide-card">
-                    <div class="card-title">Order Fills</div>
-                    <div class="scroll-container" id="fillsFeed">
-                        <div class="empty-state">No fills yet</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+      </div>
     </div>
 
     <script>
-        let ws = null;
-        let reconnectTimeout = null;
-        const MAX_FEED_ITEMS = 50;
-        let currentView = 'overview';
-        let activeBotId = null;
+      let ws = null;
+      let reconnectTimeout = null;
+      const MAX_FEED_ITEMS = 50;
+      let currentView = 'overview';
+      let activeBotId = null;
 
-        const state = {
-            bots: new Map(), // botId -> { info, state, trades, fills }
+      const state = {
+        bots: new Map(), // botId -> { info, state, trades, fills }
+      };
+
+      function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('WebSocket connected');
+          updateConnectionStatus(true);
+          if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+          }
         };
 
-        function connectWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            handleMessage(message);
+          } catch (err) {
+            console.error('Failed to parse message:', err);
+          }
+        };
 
-            ws = new WebSocket(wsUrl);
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+        };
 
-            ws.onopen = () => {
-                console.log('WebSocket connected');
-                updateConnectionStatus(true);
-                if (reconnectTimeout) {
-                    clearTimeout(reconnectTimeout);
-                    reconnectTimeout = null;
-                }
-            };
+        ws.onclose = () => {
+          console.log('WebSocket disconnected');
+          updateConnectionStatus(false);
+          // Reconnect after 2 seconds
+          reconnectTimeout = setTimeout(connectWebSocket, 2000);
+        };
+      }
 
-            ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    handleMessage(message);
-                } catch (err) {
-                    console.error('Failed to parse message:', err);
-                }
-            };
+      function updateConnectionStatus(connected) {
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('connectionStatus');
 
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-
-            ws.onclose = () => {
-                console.log('WebSocket disconnected');
-                updateConnectionStatus(false);
-                // Reconnect after 2 seconds
-                reconnectTimeout = setTimeout(connectWebSocket, 2000);
-            };
+        if (connected) {
+          statusDot.classList.add('connected');
+          statusText.textContent = 'Connected';
+        } else {
+          statusDot.classList.remove('connected');
+          statusText.textContent = 'Disconnected';
         }
+      }
 
-        function updateConnectionStatus(connected) {
-            const statusDot = document.getElementById('statusDot');
-            const statusText = document.getElementById('connectionStatus');
+      function handleMessage(msg) {
+        const botId = msg.botId;
 
-            if (connected) {
-                statusDot.classList.add('connected');
-                statusText.textContent = 'Connected';
+        switch (msg.type) {
+          case 'botList':
+            // Initialize all bots
+            msg.data.forEach((botInfo) => {
+              if (!state.bots.has(botInfo.id)) {
+                state.bots.set(botInfo.id, {
+                  info: botInfo,
+                  state: {
+                    symbol: botInfo.symbol,
+                    balance: BigInt(botInfo.balance || 0),
+                    position: BigInt(botInfo.position || 0),
+                    unrealizedPnL: BigInt(botInfo.unrealizedPnL || 0),
+                    orders: new Map(),
+                  },
+                  trades: [],
+                  fills: [],
+                });
+              }
+            });
+            updateBotCount();
+            updateBotTabs();
+            updateBotOverview();
+            if (!activeBotId && state.bots.size > 0) {
+              activeBotId = Array.from(state.bots.keys())[0];
+              updateBotDetailView();
+            }
+            break;
+
+          case 'botRegistered':
+            const newBot = {
+              info: msg.data,
+              state: {
+                symbol: msg.data.symbol,
+                balance: 0n,
+                position: 0n,
+                unrealizedPnL: 0n,
+                orders: new Map(),
+              },
+              trades: [],
+              fills: [],
+            };
+            state.bots.set(msg.data.id, newBot);
+            updateBotCount();
+            updateBotTabs();
+            updateBotOverview();
+            if (!activeBotId) {
+              activeBotId = msg.data.id;
+              updateBotDetailView();
+            }
+            break;
+
+          case 'botUnregistered':
+            state.bots.delete(msg.data.id);
+            if (activeBotId === msg.data.id) {
+              activeBotId =
+                state.bots.size > 0 ? Array.from(state.bots.keys())[0] : null;
+              updateBotDetailView();
+            }
+            updateBotCount();
+            updateBotTabs();
+            updateBotOverview();
+            break;
+
+          case 'init':
+            if (!botId || !state.bots.has(botId)) return;
+            const bot = state.bots.get(botId);
+            bot.state.symbol = msg.data.symbol;
+            bot.state.balance = BigInt(msg.data.balance);
+            bot.state.position = BigInt(msg.data.position);
+            bot.state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
+            if (msg.data.orders) {
+              msg.data.orders.forEach((order) => {
+                bot.state.orders.set(order.id, order);
+              });
+            }
+            updateBotOverview();
+            if (botId === activeBotId) {
+              updateBotDetailView();
+            }
+            break;
+
+          case 'trade':
+            if (!botId || !state.bots.has(botId)) return;
+            state.bots.get(botId).trades.unshift(msg.data);
+            if (state.bots.get(botId).trades.length > MAX_FEED_ITEMS) {
+              state.bots.get(botId).trades.pop();
+            }
+            if (botId === activeBotId) {
+              updateTradesFeed();
+            }
+            break;
+
+          case 'orderUpdate':
+            if (!botId || !state.bots.has(botId)) return;
+            const order = msg.data;
+            const botOrders = state.bots.get(botId).state.orders;
+            if (order.status === 'FILLED' || order.status === 'CANCELED') {
+              botOrders.delete(order.id);
             } else {
-                statusDot.classList.remove('connected');
-                statusText.textContent = 'Disconnected';
+              botOrders.set(order.id, order);
             }
+            if (botId === activeBotId) {
+              updateOrdersTable();
+            }
+            break;
+
+          case 'fill':
+            if (!botId || !state.bots.has(botId)) return;
+            state.bots.get(botId).fills.unshift(msg.data);
+            if (state.bots.get(botId).fills.length > MAX_FEED_ITEMS) {
+              state.bots.get(botId).fills.pop();
+            }
+            if (botId === activeBotId) {
+              updateFillsFeed();
+            }
+            break;
+
+          case 'balance':
+            if (!botId || !state.bots.has(botId)) return;
+            state.bots.get(botId).state.balance = BigInt(msg.data.balance);
+            state.bots.get(botId).state.position = BigInt(msg.data.position);
+            state.bots.get(botId).state.unrealizedPnL = BigInt(
+              msg.data.unrealizedPnL,
+            );
+            updateBotOverview();
+            if (botId === activeBotId) {
+              updateBalanceDisplay();
+            }
+            break;
+
+          case 'liquidation':
+            if (!botId || !state.bots.has(botId)) return;
+            if (botId === activeBotId) {
+              handleLiquidation(msg.data);
+            }
+            break;
+        }
+      }
+
+      function switchView(view) {
+        currentView = view;
+        const buttons = document.querySelectorAll('.toggle-btn');
+        buttons.forEach((btn) => btn.classList.remove('active'));
+        event.target.classList.add('active');
+
+        if (view === 'overview') {
+          document.getElementById('botOverviewView').classList.add('active');
+          document.getElementById('botDetailView').classList.remove('active');
+        } else {
+          document.getElementById('botOverviewView').classList.remove('active');
+          document.getElementById('botDetailView').classList.add('active');
+        }
+      }
+
+      function updateBotCount() {
+        document.getElementById('botCount').textContent =
+          `${state.bots.size} Bot${state.bots.size !== 1 ? 's' : ''}`;
+      }
+
+      function updateBotTabs() {
+        const tabsContainer = document.getElementById('botTabs');
+
+        if (state.bots.size === 0) {
+          tabsContainer.innerHTML =
+            '<div class="empty-state">No bots available</div>';
+          return;
         }
 
-        function handleMessage(msg) {
-            const botId = msg.botId;
-
-            switch (msg.type) {
-                case 'botList':
-                    // Initialize all bots
-                    msg.data.forEach(botInfo => {
-                        if (!state.bots.has(botInfo.id)) {
-                            state.bots.set(botInfo.id, {
-                                info: botInfo,
-                                state: {
-                                    symbol: botInfo.symbol,
-                                    balance: BigInt(botInfo.balance || 0),
-                                    position: BigInt(botInfo.position || 0),
-                                    unrealizedPnL: BigInt(botInfo.unrealizedPnL || 0),
-                                    orders: new Map(),
-                                },
-                                trades: [],
-                                fills: []
-                            });
-                        }
-                    });
-                    updateBotCount();
-                    updateBotTabs();
-                    updateBotOverview();
-                    if (!activeBotId && state.bots.size > 0) {
-                        activeBotId = Array.from(state.bots.keys())[0];
-                        updateBotDetailView();
-                    }
-                    break;
-
-                case 'botRegistered':
-                    const newBot = {
-                        info: msg.data,
-                        state: {
-                            symbol: msg.data.symbol,
-                            balance: 0n,
-                            position: 0n,
-                            unrealizedPnL: 0n,
-                            orders: new Map(),
-                        },
-                        trades: [],
-                        fills: []
-                    };
-                    state.bots.set(msg.data.id, newBot);
-                    updateBotCount();
-                    updateBotTabs();
-                    updateBotOverview();
-                    if (!activeBotId) {
-                        activeBotId = msg.data.id;
-                        updateBotDetailView();
-                    }
-                    break;
-
-                case 'botUnregistered':
-                    state.bots.delete(msg.data.id);
-                    if (activeBotId === msg.data.id) {
-                        activeBotId = state.bots.size > 0 ? Array.from(state.bots.keys())[0] : null;
-                        updateBotDetailView();
-                    }
-                    updateBotCount();
-                    updateBotTabs();
-                    updateBotOverview();
-                    break;
-
-                case 'init':
-                    if (!botId || !state.bots.has(botId)) return;
-                    const bot = state.bots.get(botId);
-                    bot.state.symbol = msg.data.symbol;
-                    bot.state.balance = BigInt(msg.data.balance);
-                    bot.state.position = BigInt(msg.data.position);
-                    bot.state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
-                    if (msg.data.orders) {
-                        msg.data.orders.forEach(order => {
-                            bot.state.orders.set(order.id, order);
-                        });
-                    }
-                    updateBotOverview();
-                    if (botId === activeBotId) {
-                        updateBotDetailView();
-                    }
-                    break;
-
-                case 'trade':
-                    if (!botId || !state.bots.has(botId)) return;
-                    state.bots.get(botId).trades.unshift(msg.data);
-                    if (state.bots.get(botId).trades.length > MAX_FEED_ITEMS) {
-                        state.bots.get(botId).trades.pop();
-                    }
-                    if (botId === activeBotId) {
-                        updateTradesFeed();
-                    }
-                    break;
-
-                case 'orderUpdate':
-                    if (!botId || !state.bots.has(botId)) return;
-                    const order = msg.data;
-                    const botOrders = state.bots.get(botId).state.orders;
-                    if (order.status === 'FILLED' || order.status === 'CANCELED') {
-                        botOrders.delete(order.id);
-                    } else {
-                        botOrders.set(order.id, order);
-                    }
-                    if (botId === activeBotId) {
-                        updateOrdersTable();
-                    }
-                    break;
-
-                case 'fill':
-                    if (!botId || !state.bots.has(botId)) return;
-                    state.bots.get(botId).fills.unshift(msg.data);
-                    if (state.bots.get(botId).fills.length > MAX_FEED_ITEMS) {
-                        state.bots.get(botId).fills.pop();
-                    }
-                    if (botId === activeBotId) {
-                        updateFillsFeed();
-                    }
-                    break;
-
-                case 'balance':
-                    if (!botId || !state.bots.has(botId)) return;
-                    state.bots.get(botId).state.balance = BigInt(msg.data.balance);
-                    state.bots.get(botId).state.position = BigInt(msg.data.position);
-                    state.bots.get(botId).state.unrealizedPnL = BigInt(msg.data.unrealizedPnL);
-                    updateBotOverview();
-                    if (botId === activeBotId) {
-                        updateBalanceDisplay();
-                    }
-                    break;
-
-                case 'liquidation':
-                    if (!botId || !state.bots.has(botId)) return;
-                    if (botId === activeBotId) {
-                        handleLiquidation(msg.data);
-                    }
-                    break;
-            }
-        }
-
-        function switchView(view) {
-            currentView = view;
-            const buttons = document.querySelectorAll('.toggle-btn');
-            buttons.forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-
-            if (view === 'overview') {
-                document.getElementById('botOverviewView').classList.add('active');
-                document.getElementById('botDetailView').classList.remove('active');
-            } else {
-                document.getElementById('botOverviewView').classList.remove('active');
-                document.getElementById('botDetailView').classList.add('active');
-            }
-        }
-
-        function updateBotCount() {
-            document.getElementById('botCount').textContent = `${state.bots.size} Bot${state.bots.size !== 1 ? 's' : ''}`;
-        }
-
-        function updateBotTabs() {
-            const tabsContainer = document.getElementById('botTabs');
-
-            if (state.bots.size === 0) {
-                tabsContainer.innerHTML = '<div class="empty-state">No bots available</div>';
-                return;
-            }
-
-            const tabs = Array.from(state.bots.entries()).map(([id, bot]) => {
-                const isActive = id === activeBotId;
-                return `
+        const tabs = Array.from(state.bots.entries())
+          .map(([id, bot]) => {
+            const isActive = id === activeBotId;
+            return `
                     <div class="bot-tab ${isActive ? 'active' : ''}" onclick="selectBot('${id}')">
                         <span class="bot-status-indicator"></span>
                         <span>${bot.info.name}</span>
                     </div>
                 `;
-            }).join('');
+          })
+          .join('');
 
-            tabsContainer.innerHTML = tabs;
+        tabsContainer.innerHTML = tabs;
+      }
+
+      function updateBotOverview() {
+        const overviewContainer = document.getElementById('botOverview');
+
+        if (state.bots.size === 0) {
+          overviewContainer.innerHTML =
+            '<div class="empty-state">No bots connected yet...</div>';
+          return;
         }
 
-        function updateBotOverview() {
-            const overviewContainer = document.getElementById('botOverview');
+        const cards = Array.from(state.bots.entries())
+          .map(([id, bot]) => {
+            const isActive = id === activeBotId;
+            const pnl = bot.state.unrealizedPnL;
+            const pnlClass =
+              pnl > 0n ? 'positive' : pnl < 0n ? 'negative' : 'neutral';
 
-            if (state.bots.size === 0) {
-                overviewContainer.innerHTML = '<div class="empty-state">No bots connected yet...</div>';
-                return;
-            }
-
-            const cards = Array.from(state.bots.entries()).map(([id, bot]) => {
-                const isActive = id === activeBotId;
-                const pnl = bot.state.unrealizedPnL;
-                const pnlClass = pnl > 0n ? 'positive' : pnl < 0n ? 'negative' : 'neutral';
-
-                return `
+            return `
                     <div class="bot-card ${isActive ? 'active' : ''}" onclick="selectBot('${id}'); switchView('detail');">
                         <div class="bot-card-header">
                             <div class="bot-name">${bot.info.name}</div>
@@ -854,111 +890,118 @@
                         </div>
                     </div>
                 `;
-            }).join('');
+          })
+          .join('');
 
-            overviewContainer.innerHTML = cards;
+        overviewContainer.innerHTML = cards;
+      }
+
+      function selectBot(botId) {
+        activeBotId = botId;
+        updateBotTabs();
+        updateBotDetailView();
+        updateBotOverview();
+      }
+
+      function updateBotDetailView() {
+        if (!activeBotId || !state.bots.has(activeBotId)) {
+          document.getElementById('symbolDisplay').textContent = '-';
+          document.getElementById('strategyDisplay').textContent =
+            'No bot selected';
+          return;
         }
 
-        function selectBot(botId) {
-            activeBotId = botId;
-            updateBotTabs();
-            updateBotDetailView();
-            updateBotOverview();
+        const bot = state.bots.get(activeBotId);
+        document.getElementById('symbolDisplay').textContent =
+          bot.state.symbol || '-';
+        document.getElementById('strategyDisplay').textContent =
+          bot.info.strategy || 'No strategy';
+
+        updateBalanceDisplay();
+        updateOrdersTable();
+        updateTradesFeed();
+        updateFillsFeed();
+      }
+
+      function formatQuote(amount) {
+        // Quote is scale 10 (5 + 5), display 2 decimal places
+        const divisor = 100000000n; // 1e8
+        const val = amount / divisor;
+        const integer = val / 100n;
+        const fraction = val % 100n;
+        const absFraction = fraction < 0n ? -fraction : fraction;
+        return `${integer}.${absFraction.toString().padStart(2, '0')}`;
+      }
+
+      function formatBase(amount) {
+        // Base is scale 5, display 5 decimal places
+        const divisor = 100000n; // 1e5
+        const val = amount / divisor;
+        const integer = val / 100000n;
+        const fraction = val % 100000n;
+        const absFraction = fraction < 0n ? -fraction : fraction;
+        const sign = amount < 0n ? '-' : '';
+        return `${sign}${integer}.${absFraction.toString().padStart(5, '0')}`;
+      }
+
+      function formatPrice(price) {
+        // Price scale 5, display 2 decimal places
+        const divisor = 100000n; // 1e5
+        const val = price / divisor;
+        const integer = val / 100n;
+        const fraction = val % 100n;
+        return `${integer}.${fraction.toString().padStart(2, '0')}`;
+      }
+
+      function formatTime(ts) {
+        return new Date(ts).toLocaleTimeString();
+      }
+
+      function updateBalanceDisplay() {
+        if (!activeBotId || !state.bots.has(activeBotId)) return;
+
+        const botState = state.bots.get(activeBotId).state;
+        const balanceEl = document.getElementById('balanceDisplay');
+        const positionEl = document.getElementById('positionDisplay');
+        const pnlEl = document.getElementById('pnlDisplay');
+
+        balanceEl.textContent = formatQuote(botState.balance);
+        positionEl.textContent = formatBase(botState.position);
+        pnlEl.textContent = formatQuote(botState.unrealizedPnL);
+
+        // Update colors
+        if (botState.unrealizedPnL > 0n) {
+          pnlEl.className = 'stat-value positive';
+        } else if (botState.unrealizedPnL < 0n) {
+          pnlEl.className = 'stat-value negative';
+        } else {
+          pnlEl.className = 'stat-value neutral';
         }
 
-        function updateBotDetailView() {
-            if (!activeBotId || !state.bots.has(activeBotId)) {
-                document.getElementById('symbolDisplay').textContent = '-';
-                document.getElementById('strategyDisplay').textContent = 'No bot selected';
-                return;
-            }
+        if (botState.position > 0n) {
+          positionEl.className = 'stat-value positive';
+        } else if (botState.position < 0n) {
+          positionEl.className = 'stat-value negative';
+        } else {
+          positionEl.className = 'stat-value neutral';
+        }
+      }
 
-            const bot = state.bots.get(activeBotId);
-            document.getElementById('symbolDisplay').textContent = bot.state.symbol || '-';
-            document.getElementById('strategyDisplay').textContent = bot.info.strategy || 'No strategy';
+      function updateOrdersTable() {
+        if (!activeBotId || !state.bots.has(activeBotId)) return;
 
-            updateBalanceDisplay();
-            updateOrdersTable();
-            updateTradesFeed();
-            updateFillsFeed();
+        const tbody = document.getElementById('ordersBody');
+        const orders = state.bots.get(activeBotId).state.orders;
+
+        if (orders.size === 0) {
+          tbody.innerHTML =
+            '<tr><td colspan="7" class="empty-state">No active orders</td></tr>';
+          return;
         }
 
-        function formatQuote(amount) {
-            // Quote is scale 10 (5 + 5), display 2 decimal places
-            const divisor = 100000000n; // 1e8
-            const val = amount / divisor;
-            const integer = val / 100n;
-            const fraction = val % 100n;
-            const absFraction = fraction < 0n ? -fraction : fraction;
-            return `${integer}.${absFraction.toString().padStart(2, '0')}`;
-        }
-
-        function formatBase(amount) {
-            // Base is scale 5, display 5 decimal places
-            const divisor = 100000n; // 1e5
-            const val = amount / divisor;
-            const integer = val / 100000n;
-            const fraction = val % 100000n;
-            const absFraction = fraction < 0n ? -fraction : fraction;
-            const sign = amount < 0n ? '-' : '';
-            return `${sign}${integer}.${absFraction.toString().padStart(5, '0')}`;
-        }
-
-        function formatPrice(price) {
-            // Price scale 5, display 2 decimal places
-            const divisor = 100000n; // 1e5
-            const val = price / divisor;
-            const integer = val / 100n;
-            const fraction = val % 100n;
-            return `${integer}.${fraction.toString().padStart(2, '0')}`;
-        }
-
-        function formatTime(ts) {
-            return new Date(ts).toLocaleTimeString();
-        }
-
-        function updateBalanceDisplay() {
-            if (!activeBotId || !state.bots.has(activeBotId)) return;
-
-            const botState = state.bots.get(activeBotId).state;
-            const balanceEl = document.getElementById('balanceDisplay');
-            const positionEl = document.getElementById('positionDisplay');
-            const pnlEl = document.getElementById('pnlDisplay');
-
-            balanceEl.textContent = formatQuote(botState.balance);
-            positionEl.textContent = formatBase(botState.position);
-            pnlEl.textContent = formatQuote(botState.unrealizedPnL);
-
-            // Update colors
-            if (botState.unrealizedPnL > 0n) {
-                pnlEl.className = 'stat-value positive';
-            } else if (botState.unrealizedPnL < 0n) {
-                pnlEl.className = 'stat-value negative';
-            } else {
-                pnlEl.className = 'stat-value neutral';
-            }
-
-            if (botState.position > 0n) {
-                positionEl.className = 'stat-value positive';
-            } else if (botState.position < 0n) {
-                positionEl.className = 'stat-value negative';
-            } else {
-                positionEl.className = 'stat-value neutral';
-            }
-        }
-
-        function updateOrdersTable() {
-            if (!activeBotId || !state.bots.has(activeBotId)) return;
-
-            const tbody = document.getElementById('ordersBody');
-            const orders = state.bots.get(activeBotId).state.orders;
-
-            if (orders.size === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No active orders</td></tr>';
-                return;
-            }
-
-            const rows = Array.from(orders.values()).map(order => `
+        const rows = Array.from(orders.values())
+          .map(
+            (order) => `
                 <tr>
                     <td>${order.id.substring(0, 8)}</td>
                     <td><span class="badge badge-${order.type.toLowerCase()}">${order.type}</span></td>
@@ -968,23 +1011,28 @@
                     <td>${formatBase(BigInt(order.filledQty || 0))}</td>
                     <td>${order.status}</td>
                 </tr>
-            `).join('');
+            `,
+          )
+          .join('');
 
-            tbody.innerHTML = rows;
+        tbody.innerHTML = rows;
+      }
+
+      function updateTradesFeed() {
+        if (!activeBotId || !state.bots.has(activeBotId)) return;
+
+        const feed = document.getElementById('tradesFeed');
+        const trades = state.bots.get(activeBotId).trades;
+
+        if (trades.length === 0) {
+          feed.innerHTML =
+            '<div class="empty-state">Waiting for trades...</div>';
+          return;
         }
 
-        function updateTradesFeed() {
-            if (!activeBotId || !state.bots.has(activeBotId)) return;
-
-            const feed = document.getElementById('tradesFeed');
-            const trades = state.bots.get(activeBotId).trades;
-
-            if (trades.length === 0) {
-                feed.innerHTML = '<div class="empty-state">Waiting for trades...</div>';
-                return;
-            }
-
-            const items = trades.map(trade => `
+        const items = trades
+          .map(
+            (trade) => `
                 <div class="feed-item">
                     <div class="feed-header">
                         <span class="badge badge-${trade.side.toLowerCase()}">${trade.side}</span>
@@ -994,23 +1042,27 @@
                         ${formatPrice(BigInt(trade.price))} USDT × ${formatBase(BigInt(trade.qty))} BTC
                     </div>
                 </div>
-            `).join('');
+            `,
+          )
+          .join('');
 
-            feed.innerHTML = items;
+        feed.innerHTML = items;
+      }
+
+      function updateFillsFeed() {
+        if (!activeBotId || !state.bots.has(activeBotId)) return;
+
+        const feed = document.getElementById('fillsFeed');
+        const fills = state.bots.get(activeBotId).fills;
+
+        if (fills.length === 0) {
+          feed.innerHTML = '<div class="empty-state">No fills yet</div>';
+          return;
         }
 
-        function updateFillsFeed() {
-            if (!activeBotId || !state.bots.has(activeBotId)) return;
-
-            const feed = document.getElementById('fillsFeed');
-            const fills = state.bots.get(activeBotId).fills;
-
-            if (fills.length === 0) {
-                feed.innerHTML = '<div class="empty-state">No fills yet</div>';
-                return;
-            }
-
-            const items = fills.map(fill => `
+        const items = fills
+          .map(
+            (fill) => `
                 <div class="feed-item">
                     <div class="feed-header">
                         <span class="badge badge-${fill.side.toLowerCase()}">${fill.side}</span>
@@ -1022,19 +1074,21 @@
                         <small style="color: var(--text-secondary);">Order: ${fill.orderId.substring(0, 8)}</small>
                     </div>
                 </div>
-            `).join('');
+            `,
+          )
+          .join('');
 
-            feed.innerHTML = items;
-        }
+        feed.innerHTML = items;
+      }
 
-        function handleLiquidation(data) {
-            // Add a special alert for liquidation
-            const feed = document.getElementById('fillsFeed');
-            const alertItem = document.createElement('div');
-            alertItem.className = 'feed-item';
-            alertItem.style.background = 'rgba(239, 68, 68, 0.1)';
-            alertItem.style.border = '1px solid var(--accent-red)';
-            alertItem.innerHTML = `
+      function handleLiquidation(data) {
+        // Add a special alert for liquidation
+        const feed = document.getElementById('fillsFeed');
+        const alertItem = document.createElement('div');
+        alertItem.className = 'feed-item';
+        alertItem.style.background = 'rgba(239, 68, 68, 0.1)';
+        alertItem.style.border = '1px solid var(--accent-red)';
+        alertItem.innerHTML = `
                 <div class="feed-header">
                     <span style="color: var(--accent-red); font-weight: 700;">🚨 LIQUIDATION</span>
                     <span class="feed-time">${formatTime(data.ts)}</span>
@@ -1043,12 +1097,11 @@
                     ${data.reason}
                 </div>
             `;
-            feed.insertBefore(alertItem, feed.firstChild);
-        }
+        feed.insertBefore(alertItem, feed.firstChild);
+      }
 
-        // Initialize
-        connectWebSocket();
+      // Initialize
+      connectWebSocket();
     </script>
-</body>
-
+  </body>
 </html>

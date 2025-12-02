@@ -1,10 +1,10 @@
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import tradesV1 from '@tradeforge/schemas/v1/trades' with { type: 'json' };
-import depthL2DiffV1 from '@tradeforge/schemas/v1/depth-l2diff' with { type: 'json' };
-import checkpointV1 from '@tradeforge/schemas/v1/checkpoint' with { type: 'json' };
-import logsV1 from '@tradeforge/schemas/v1/logs' with { type: 'json' };
-import metricsV1 from '@tradeforge/schemas/v1/metrics' with { type: 'json' };
+import tradesV1 from '@tradeforge/schemas/v1/trades';
+import depthL2DiffV1 from '@tradeforge/schemas/v1/depth-l2diff';
+import checkpointV1 from '@tradeforge/schemas/v1/checkpoint';
+import logsV1 from '@tradeforge/schemas/v1/logs';
+import metricsV1 from '@tradeforge/schemas/v1/metrics';
 import type {
   TradeV1,
   DepthL2DiffV1,

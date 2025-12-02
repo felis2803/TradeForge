@@ -28,7 +28,8 @@ export class EngineEventBus {
     payload: Parameters<EngineEvents[E]>[0],
   ): void {
     for (const cb of this.listeners[event]) {
-      cb(payload);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cb as any)(payload);
     }
   }
 }
