@@ -81,12 +81,12 @@ export default function ManualTrading(): JSX.Element {
     setOrders: state.setOrders,
     setPositions: state.setPositions,
     setPositionEvents: state.setPositionEvents,
-    setTrades: marketData.setTrades || (() => {}),
+    setTrades: marketData.setTrades || (() => { }),
     setConnectionMessage: state.setConnectionMessage,
     setConnectionError: state.setConnectionError,
     setIsPaused: state.setIsPaused,
     resetStreams: marketData.resetStreams,
-    setLastUpdateAt: marketData.setLastUpdateAt || (() => {}),
+    setLastUpdateAt: marketData.setLastUpdateAt || (() => { }),
   });
 
   // ===== Quick Actions Hook =====
@@ -148,7 +148,7 @@ export default function ManualTrading(): JSX.Element {
           setDataMode={state.setDataMode}
           setBalance={state.setBalance}
           setPeriodStart={state.setPeriodStart}
-          setPeriodEnd={state.periodEnd}
+          setPeriodEnd={state.setPeriodEnd}
           setPlaybackSpeed={state.setPlaybackSpeed}
           handleConnect={orderMgmt.handleConnect}
         />
